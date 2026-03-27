@@ -1,0 +1,28 @@
+# Build
+/target
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.cast.bak
+
+# SQLite (no tracking db in crunch, but just in case)
+*.db
+*.sqlite
+
+# Upstream reference (don't commit the clone)
+/upstream-rtk/
