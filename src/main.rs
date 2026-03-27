@@ -1127,6 +1127,51 @@ fn run_fallback(parse_error: clap::Error) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" ")
     };
+    // Check if this command has a mise task mapping — routes through mise before
+    // attempting TOML filters or direct execution. This generalizes mise dispatch
+    // beyond the 3 hardcoded tools (pytest, ruff, mypy) to any tool in [mise] config.
+    let tool_basename = std::path::Path::new(&args[0])
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| args[0].clone());
+    if let Some(task) = mise_cmd::lookup_mise_task(&tool_basename) {
+        let tool_args: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
+        match mise_cmd::execute_via_mise(&task, &tool_args, 0) {
+            Ok(output) => {
+                let (combined, exit_code) =
+                    extract_mise_output_parts(&output.stdout, &output.stderr, output.status.code());
+
+                // Tee the raw output
+                if let Some(hint) =
+                    tee::tee_and_hint_scoped(&combined, &tool_basename, &tool_args, exit_code)
+                {
+                    println!("{}\n{}", combined, hint);
+                } else {
+                    print!("{}", combined);
+                }
+
+                timer.track(
+                    &raw_command,
+                    &format!("crunch:mise {}", raw_command),
+                    &combined,
+                    &combined, // no parser filtering in fallback path
+                );
+
+                if !output.status.success() {
+                    std::process::exit(exit_code);
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!(
+                    "[crunch] warning: mise task '{}' failed: {}, falling back",
+                    task, e
+                );
+                // Fall through to TOML / direct execution
+            }
+        }
+    }
+
     let toml_match = if std::env::var("CRUNCH_NO_TOML").ok().as_deref() == Some("1") {
         None
     } else {
@@ -1276,6 +1321,20 @@ fn shell_split(input: &str) -> Vec<String> {
         tokens.push(current);
     }
     tokens
+}
+
+/// Extract combined stdout+stderr and exit code from raw byte slices.
+/// Used by both the per-tool match arms (with parsers) and the fallback path (raw output).
+fn extract_mise_output_parts(
+    stdout: &[u8],
+    stderr: &[u8],
+    exit_code: Option<i32>,
+) -> (String, i32) {
+    let stdout_str = String::from_utf8_lossy(stdout);
+    let stderr_str = String::from_utf8_lossy(stderr);
+    let combined = format!("{}{}", stdout_str, stderr_str);
+    let code = exit_code.unwrap_or(1);
+    (combined, code)
 }
 
 /// Check if a tool should route through mise. If so, execute via mise
@@ -2378,7 +2437,7 @@ mod tests {
     #[test]
     fn test_git_commit_multiple_messages() {
         let cli = Cli::try_parse_from([
-            "rtk",
+            "crunch",
             "git",
             "commit",
             "-m",
@@ -2461,7 +2520,7 @@ mod tests {
     #[test]
     fn test_git_commit_long_flag_multiple() {
         let cli = Cli::try_parse_from([
-            "rtk",
+            "crunch",
             "git",
             "commit",
             "--message",
@@ -2687,5 +2746,48 @@ mod tests {
                 _ => panic!("expected Rewrite command"),
             }
         }
+    }
+
+    #[test]
+    fn test_handle_mise_output_formats_combined_output() {
+        // handle_mise_output should combine stdout+stderr from a process::Output
+        // and return (combined_string, exit_code)
+        let (combined, exit_code) =
+            extract_mise_output_parts(b"test passed\n", b"some warning\n", Some(0));
+        assert_eq!(combined, "test passed\nsome warning\n");
+        assert_eq!(exit_code, 0);
+    }
+
+    #[test]
+    fn test_handle_mise_output_nonzero_exit() {
+        let (combined, exit_code) =
+            extract_mise_output_parts(b"FAILED test_foo\n", b"error details\n", Some(1));
+        assert_eq!(combined, "FAILED test_foo\nerror details\n");
+        assert_eq!(exit_code, 1);
+    }
+
+    #[test]
+    fn test_handle_mise_output_none_exit_defaults_to_1() {
+        let (_combined, exit_code) = extract_mise_output_parts(b"output\n", b"", None);
+        assert_eq!(exit_code, 1);
+    }
+
+    #[test]
+    fn test_fallback_mise_route_lookup_arbitrary_tool() {
+        // Verifies that try_mise_route delegates to lookup_mise_task,
+        // which should work for ANY tool name configured in [mise], not just
+        // the 3 hardcoded ones (pytest, ruff, mypy).
+        // With no config, any tool should return None from lookup.
+        let result = mise_cmd::lookup_mise_task("pyright");
+        assert!(
+            result.is_none(),
+            "pyright should not be mapped without config"
+        );
+
+        let result = mise_cmd::lookup_mise_task("black");
+        assert!(
+            result.is_none(),
+            "black should not be mapped without config"
+        );
     }
 }
