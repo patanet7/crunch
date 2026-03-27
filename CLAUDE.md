@@ -1,6 +1,10 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Crunch — Developer Guide
 
-Privacy-respecting, mise-aware output compression proxy for AI coding assistants.
+Mise-aware output compression proxy for AI coding assistants.
 Fork of [RTK](https://github.com/rtk-ai/rtk) (Apache-2.0).
 
 ## Setup
@@ -41,10 +45,10 @@ cargo fmt --all && cargo clippy --all-targets && cargo test --all
 
 ```
 src/
-  main.rs              # CLI entry, clap enum router, command dispatch
-  mise_cmd.rs          # NEW: mise routing (tool->task config lookup, flag passthrough)
-  config.rs            # MODIFIED: [mise], [tee] config; no telemetry/tracking
-  tee.rs               # MODIFIED: always-on, project-scoped logging to /tmp/crunch/
+  main.rs              # CLI entry, clap enum router, command dispatch, try_mise_route
+  mise_cmd.rs          # mise routing: tool->task config lookup, flag passthrough
+  config.rs            # MiseConfig, TeeConfig with per-tool overrides, cached_config, merge_configs_from_str
+  tee.rs               # always-on project-scoped logging, per-tool overrides, cached project name
   filter.rs            # language-aware code filtering (none/minimal/aggressive)
   runner.rs            # command execution
   utils.rs             # shared utilities (truncate, strip_ansi, package detection)
@@ -77,10 +81,10 @@ docs/
 
 ### What changed from RTK
 
-- **Stripped**: `telemetry.rs`, `tracking.rs`, `local_llm.rs`, `cc_economics.rs`, `ccusage.rs`, `gain.rs`, `session_cmd.rs`, `discover/`, `learn/`, `integrity.rs`, `verify_cmd.rs`, `hook_audit_cmd.rs`
+- **Stripped**: `telemetry.rs` only (plus `ureq`, `hostname` deps from `Cargo.toml`)
 - **Added**: `mise_cmd.rs` (mise task routing)
-- **Modified**: `config.rs` (no telemetry/tracking, added [mise] and [tee]), `tee.rs` (always-on, project-scoped), `main.rs` (removed stripped modules), `Cargo.toml` (renamed, removed unused deps)
-- **Untouched**: All 71 parser modules, `filter.rs`, `utils.rs`, `parser/`, `init.rs`, hook system
+- **Modified**: `config.rs` (removed `TelemetryConfig`; added `MiseConfig`, `TeeConfig`, `cached_config`, `merge_configs_from_str`), `tee.rs` (always-on project-scoped logging, per-tool overrides, cached project name), `main.rs` (renamed to crunch, mise routing via `try_mise_route`, removed telemetry init), `Cargo.toml` (renamed package, removed unused deps)
+- **Kept**: Everything else — all parsers, `tracking.rs`, `gain.rs`, `discover/`, `learn/`, `integrity.rs`, `verify_cmd.rs`, `hook_audit_cmd.rs`, `session_cmd.rs`, `local_llm.rs`, `cc_economics.rs`, `ccusage.rs`, `filter.rs`, `utils.rs`, `parser/`, `init.rs`, hook system
 
 ### Mise integration
 
@@ -122,7 +126,7 @@ ls = { enabled = false }
 ### Config hierarchy
 
 1. `~/.config/crunch/config.toml` — global defaults
-2. `.crunch.toml` in project root — per-project overrides (key-by-key merge)
+2. `.crunch.toml` in project root — per-project overrides (key-by-key merge across all sections: `[mise]`, `[tee]`, `[tee.overrides]`, `[hooks]`, `[filters]`, `[display]`)
 
 ## Rust conventions
 
