@@ -35,7 +35,7 @@ fn sanitize_slug(slug: &str) -> String {
 /// Get the tee directory, respecting config and env overrides.
 fn get_tee_dir(config: &Config) -> Option<PathBuf> {
     // Env var override
-    if let Ok(dir) = std::env::var("RTK_TEE_DIR") {
+    if let Ok(dir) = std::env::var("CRUNCH_TEE_DIR") {
         return Some(PathBuf::from(dir));
     }
 
@@ -44,8 +44,8 @@ fn get_tee_dir(config: &Config) -> Option<PathBuf> {
         return Some(dir.clone());
     }
 
-    // Default: ~/.local/share/rtk/tee/
-    dirs::data_local_dir().map(|d| d.join("rtk").join("tee"))
+    // Default: ~/.local/share/crunch/tee/
+    dirs::data_local_dir().map(|d| d.join("crunch").join("tee"))
 }
 
 /// Rotate old tee files: keep only the last `max_files`, delete oldest.
@@ -119,11 +119,21 @@ fn write_tee_file(
     let filename = format!("{}_{}.log", epoch, slug);
     let filepath = tee_dir.join(filename);
 
-    // Truncate at max_file_size
-    let content = if raw.len() > max_file_size {
+    // Safe truncation at char boundary
+    let end = if max_file_size >= raw.len() {
+        raw.len()
+    } else {
+        let mut end = max_file_size;
+        while end > 0 && !raw.is_char_boundary(end) {
+            end -= 1;
+        }
+        end
+    };
+
+    let content = if end < raw.len() {
         format!(
             "{}\n\n--- truncated at {} bytes ---",
-            &raw[..max_file_size],
+            &raw[..end],
             max_file_size
         )
     } else {
@@ -141,8 +151,8 @@ fn write_tee_file(
 /// Write raw output to tee file if conditions are met.
 /// Returns file path on success, None if skipped/failed.
 pub fn tee_raw(raw: &str, command_slug: &str, exit_code: i32) -> Option<PathBuf> {
-    // Check RTK_TEE=0 env override (disable)
-    if std::env::var("RTK_TEE").ok().as_deref() == Some("0") {
+    // Check CRUNCH_TEE=0 env override (disable)
+    if std::env::var("CRUNCH_TEE").ok().as_deref() == Some("0") {
         return None;
     }
 
@@ -263,11 +273,23 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
         std::fs::create_dir_all(parent).ok()?;
     }
 
-    let content = if raw.len() > config.max_file_size {
+    // Safe truncation at char boundary
+    let max_file_size = config.max_file_size;
+    let end = if max_file_size >= raw.len() {
+        raw.len()
+    } else {
+        let mut end = max_file_size;
+        while end > 0 && !raw.is_char_boundary(end) {
+            end -= 1;
+        }
+        end
+    };
+
+    let content = if end < raw.len() {
         format!(
             "{}\n\n--- truncated at {} bytes ---",
-            &raw[..config.max_file_size],
-            config.max_file_size
+            &raw[..end],
+            max_file_size
         )
     } else {
         raw.to_string()
