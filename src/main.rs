@@ -1273,6 +1273,13 @@ fn shell_split(input: &str) -> Vec<String> {
     tokens
 }
 
+/// Check if a tool should route through mise. If so, execute via mise
+/// and return the raw output. The caller is responsible for parsing.
+fn try_mise_route(tool: &str, args: &[String], verbose: u8) -> Option<std::process::Output> {
+    let task = mise_cmd::lookup_mise_task(tool)?;
+    mise_cmd::execute_via_mise(&task, args, verbose).ok()
+}
+
 fn main() -> Result<()> {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -2018,15 +2025,39 @@ fn main() -> Result<()> {
         }
 
         Commands::Ruff { args } => {
-            ruff_cmd::run(&args, cli.verbose)?;
+            if let Some(output) = try_mise_route("ruff", &args, cli.verbose) {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", stdout, stderr);
+                let exit_code = output.status.code().unwrap_or(1);
+                ruff_cmd::run_with_output(&combined, &args, exit_code, cli.verbose)?;
+            } else {
+                ruff_cmd::run(&args, cli.verbose)?;
+            }
         }
 
         Commands::Pytest { args } => {
-            pytest_cmd::run(&args, cli.verbose)?;
+            if let Some(output) = try_mise_route("pytest", &args, cli.verbose) {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", stdout, stderr);
+                let exit_code = output.status.code().unwrap_or(1);
+                pytest_cmd::run_with_output(&combined, &args, exit_code, cli.verbose)?;
+            } else {
+                pytest_cmd::run(&args, cli.verbose)?;
+            }
         }
 
         Commands::Mypy { args } => {
-            mypy_cmd::run(&args, cli.verbose)?;
+            if let Some(output) = try_mise_route("mypy", &args, cli.verbose) {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", stdout, stderr);
+                let exit_code = output.status.code().unwrap_or(1);
+                mypy_cmd::run_with_output(&combined, &args, exit_code, cli.verbose)?;
+            } else {
+                mypy_cmd::run(&args, cli.verbose)?;
+            }
         }
 
         Commands::Rake { args } => {

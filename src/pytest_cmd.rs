@@ -10,6 +10,38 @@ enum ParseState {
     Summary,
 }
 
+/// Process pre-captured output (e.g. from mise) through the pytest parser.
+/// Handles filtering, tee, tracking, and exit code — everything `run()` does
+/// except executing the command.
+pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) -> Result<()> {
+    let timer = tracking::TimedExecution::start();
+
+    if verbose > 0 {
+        eprintln!("crunch: parsing pytest output ({} bytes)", raw.len());
+    }
+
+    let filtered = filter_pytest_output(raw);
+
+    if let Some(hint) = crate::tee::tee_and_hint(raw, "pytest", exit_code) {
+        println!("{}\n{}", filtered, hint);
+    } else {
+        println!("{}", filtered);
+    }
+
+    timer.track(
+        &format!("pytest {}", args.join(" ")),
+        &format!("rtk pytest {}", args.join(" ")),
+        raw,
+        &filtered,
+    );
+
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+
+    Ok(())
+}
+
 pub fn run(args: &[String], verbose: u8) -> Result<()> {
     let timer = tracking::TimedExecution::start();
 

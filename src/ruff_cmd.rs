@@ -32,6 +32,46 @@ struct RuffDiagnostic {
     fix: Option<RuffFix>,
 }
 
+/// Process pre-captured output (e.g. from mise) through the ruff parser.
+/// Handles filtering, tracking, and exit code — everything `run()` does
+/// except executing the command.
+pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) -> Result<()> {
+    let timer = tracking::TimedExecution::start();
+
+    if verbose > 0 {
+        eprintln!("crunch: parsing ruff output ({} bytes)", raw.len());
+    }
+
+    // Detect subcommand from args
+    let is_check = args.is_empty()
+        || args[0] == "check"
+        || (!args[0].starts_with('-') && args[0] != "format" && args[0] != "version");
+    let is_format = args.iter().any(|a| a == "format");
+
+    let filtered = if is_check && !raw.trim().is_empty() {
+        filter_ruff_check_json(raw)
+    } else if is_format {
+        filter_ruff_format(raw)
+    } else {
+        raw.trim().to_string()
+    };
+
+    println!("{}", filtered);
+
+    timer.track(
+        &format!("ruff {}", args.join(" ")),
+        &format!("rtk ruff {}", args.join(" ")),
+        raw,
+        &filtered,
+    );
+
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+
+    Ok(())
+}
+
 pub fn run(args: &[String], verbose: u8) -> Result<()> {
     let timer = tracking::TimedExecution::start();
 

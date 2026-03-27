@@ -4,6 +4,35 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::collections::HashMap;
 
+/// Process pre-captured output (e.g. from mise) through the mypy parser.
+/// Handles filtering, tracking, and exit code — everything `run()` does
+/// except executing the command.
+pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) -> Result<()> {
+    let timer = tracking::TimedExecution::start();
+
+    if verbose > 0 {
+        eprintln!("crunch: parsing mypy output ({} bytes)", raw.len());
+    }
+
+    let clean = strip_ansi(raw);
+    let filtered = filter_mypy_output(&clean);
+
+    println!("{}", filtered);
+
+    timer.track(
+        &format!("mypy {}", args.join(" ")),
+        &format!("rtk mypy {}", args.join(" ")),
+        raw,
+        &filtered,
+    );
+
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+
+    Ok(())
+}
+
 pub fn run(args: &[String], verbose: u8) -> Result<()> {
     let timer = tracking::TimedExecution::start();
 
