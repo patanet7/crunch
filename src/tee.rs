@@ -152,7 +152,7 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
 
     let project = cached_project_name();
     let scope = detect_scope(args);
-    let log_path = build_log_path(&project, tool, &scope);
+    let log_path = build_log_path(project, tool, &scope);
 
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent).ok()?;
@@ -218,6 +218,7 @@ pub struct TeeToolOverride {
 
 /// Configuration for the tee feature.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct TeeConfig {
     pub enabled: bool,
     pub mode: TeeMode,

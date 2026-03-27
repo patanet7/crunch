@@ -42,6 +42,7 @@ pub struct HooksConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TrackingConfig {
     pub enabled: bool,
     pub history_days: u32,
@@ -60,6 +61,7 @@ impl Default for TrackingConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DisplayConfig {
     pub colors: bool,
     pub emoji: bool,
@@ -77,6 +79,7 @@ impl Default for DisplayConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FilterConfig {
     pub ignore_dirs: Vec<String>,
     pub ignore_files: Vec<String>,
@@ -99,6 +102,7 @@ impl Default for FilterConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LimitsConfig {
     /// Max total grep results to show (default: 200)
     pub grep_max_results: usize,
@@ -166,23 +170,46 @@ fn get_config_path() -> Result<PathBuf> {
     Ok(config_dir.join("crunch").join("config.toml"))
 }
 
-/// Merge a project-level config on top of a global config.
-/// Project values override global values key-by-key within each section.
-pub fn merge_configs(global: Config, project: Config) -> Config {
+/// Merge a project-level config (raw TOML string) on top of a global config.
+/// Only sections explicitly present in the project TOML override the global.
+/// Mise merges additively (key-by-key); all other sections replace entirely.
+pub fn merge_configs_from_str(global: Config, project_toml_str: &str) -> Result<Config> {
+    let project: Config =
+        toml::from_str(project_toml_str).context("Failed to parse project config")?;
+    let project_value: toml::Value =
+        toml::from_str(project_toml_str).context("Failed to parse project config as TOML value")?;
+
+    let table = project_value.as_table();
+    let has = |key: &str| table.map_or(false, |t| t.contains_key(key));
+
     let mut merged = global;
 
-    // Merge mise: project overrides/extends global
+    // Mise always merges key-by-key (additive)
     for (k, v) in project.mise {
         merged.mise.insert(k, v);
     }
 
-    // Merge tee overrides if project specifies non-default values
-    // (We check if the project config has a non-default tee by comparing to defaults)
-    if !project.hooks.exclude_commands.is_empty() {
-        merged.hooks.exclude_commands = project.hooks.exclude_commands;
+    // Other sections: if present in project, replace entirely
+    if has("tee") {
+        merged.tee = project.tee;
+    }
+    if has("display") {
+        merged.display = project.display;
+    }
+    if has("filters") {
+        merged.filters = project.filters;
+    }
+    if has("limits") {
+        merged.limits = project.limits;
+    }
+    if has("hooks") {
+        merged.hooks = project.hooks;
+    }
+    if has("tracking") {
+        merged.tracking = project.tracking;
     }
 
-    merged
+    Ok(merged)
 }
 
 /// Load config with project-level .crunch.toml merge.
@@ -197,9 +224,8 @@ pub fn load_merged() -> Result<Config> {
     if project_path.exists() {
         let content = std::fs::read_to_string(&project_path)
             .with_context(|| format!("Failed to read {}", project_path.display()))?;
-        let project: Config = toml::from_str(&content)
-            .with_context(|| format!("Failed to parse {}", project_path.display()))?;
-        Ok(merge_configs(global, project))
+        merge_configs_from_str(global, &content)
+            .with_context(|| format!("Failed to merge {}", project_path.display()))
     } else {
         Ok(global)
     }
@@ -304,8 +330,7 @@ history_days = 90
 pytest = "test-fast"
 mypy = "typecheck"
 "#;
-        let project: Config = toml::from_str(project_toml).expect("valid toml");
-        let merged = merge_configs(global, project);
+        let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
 
         // Project overrides global for pytest
         assert_eq!(merged.mise.get("pytest"), Some(&"test-fast".to_string()));
@@ -313,5 +338,38 @@ mypy = "typecheck"
         assert_eq!(merged.mise.get("mypy"), Some(&"typecheck".to_string()));
         // Global ruff preserved
         assert_eq!(merged.mise.get("ruff"), Some(&"lint".to_string()));
+    }
+
+    #[test]
+    fn test_merge_tee_config() {
+        let global = Config::default();
+        let project_toml = r#"
+[tee]
+mode = "failures"
+"#;
+        let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
+        assert_eq!(merged.tee.mode, crate::tee::TeeMode::Failures);
+    }
+
+    #[test]
+    fn test_merge_limits_config() {
+        let global = Config::default();
+        let project_toml = r#"
+[limits]
+grep_max_results = 50
+"#;
+        let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
+        assert_eq!(merged.limits.grep_max_results, 50);
+    }
+
+    #[test]
+    fn test_merge_display_config() {
+        let global = Config::default();
+        let project_toml = r#"
+[display]
+max_width = 80
+"#;
+        let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
+        assert_eq!(merged.display.max_width, 80);
     }
 }
