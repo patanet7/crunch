@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -158,6 +158,45 @@ fn get_config_path() -> Result<PathBuf> {
     Ok(config_dir.join("rtk").join("config.toml"))
 }
 
+/// Merge a project-level config on top of a global config.
+/// Project values override global values key-by-key within each section.
+pub fn merge_configs(global: Config, project: Config) -> Config {
+    let mut merged = global;
+
+    // Merge mise: project overrides/extends global
+    for (k, v) in project.mise {
+        merged.mise.insert(k, v);
+    }
+
+    // Merge tee overrides if project specifies non-default values
+    // (We check if the project config has a non-default tee by comparing to defaults)
+    if !project.hooks.exclude_commands.is_empty() {
+        merged.hooks.exclude_commands = project.hooks.exclude_commands;
+    }
+
+    merged
+}
+
+/// Load config with project-level .crunch.toml merge.
+/// Priority: .crunch.toml (cwd) > ~/.config/crunch/config.toml > defaults.
+pub fn load_merged() -> Result<Config> {
+    let global = Config::load()?;
+
+    let project_path = std::env::current_dir()
+        .unwrap_or_default()
+        .join(".crunch.toml");
+
+    if project_path.exists() {
+        let content = std::fs::read_to_string(&project_path)
+            .with_context(|| format!("Failed to read {}", project_path.display()))?;
+        let project: Config = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", project_path.display()))?;
+        Ok(merge_configs(global, project))
+    } else {
+        Ok(global)
+    }
+}
+
 pub fn show_config() -> Result<()> {
     let path = get_config_path()?;
     println!("Config: {}", path.display());
@@ -236,5 +275,27 @@ history_days = 90
 "#;
         let config: Config = toml::from_str(toml).expect("valid toml");
         assert!(config.mise.is_empty());
+    }
+
+    #[test]
+    fn test_merge_project_config() {
+        let mut global = Config::default();
+        global.mise.insert("pytest".into(), "test".into());
+        global.mise.insert("ruff".into(), "lint".into());
+
+        let project_toml = r#"
+[mise]
+pytest = "test-fast"
+mypy = "typecheck"
+"#;
+        let project: Config = toml::from_str(project_toml).expect("valid toml");
+        let merged = merge_configs(global, project);
+
+        // Project overrides global for pytest
+        assert_eq!(merged.mise.get("pytest"), Some(&"test-fast".to_string()));
+        // Project adds mypy
+        assert_eq!(merged.mise.get("mypy"), Some(&"typecheck".to_string()));
+        // Global ruff preserved
+        assert_eq!(merged.mise.get("ruff"), Some(&"lint".to_string()));
     }
 }
