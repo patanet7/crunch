@@ -38,9 +38,41 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Delegate all rewrite logic to the Rust binary.
-# crunch rewrite exits 1 when there's no rewrite — hook passes through silently.
-REWRITTEN=$(crunch rewrite "$CMD" 2>/dev/null) || { echo '{}'; exit 0; }
+# Delegate all rewrite + permission logic to the Rust binary.
+#
+# Exit code protocol for `crunch rewrite`:
+#   0 + stdout  Rewrite found, no deny/ask rule matched → auto-allow
+#   1           No crunch equivalent → pass through unchanged
+#   2           Deny rule matched → block the command
+#   3 + stdout  Ask rule matched → rewrite but prompt user
+REWRITTEN=$(crunch rewrite "$CMD" 2>/dev/null)
+EXIT_CODE=$?
+
+case $EXIT_CODE in
+  0)
+    # Rewrite found — auto-allow (handled below)
+    ;;
+  1)
+    # No crunch equivalent — pass through unchanged
+    echo '{}'
+    exit 0
+    ;;
+  2)
+    # Deny rule matched — emit error, pass through (Cursor has no native deny)
+    echo "[crunch] Command denied by permission rule: $CMD" >&2
+    echo '{}'
+    exit 0
+    ;;
+  3)
+    # Ask rule matched — rewrite but do NOT auto-allow
+    # Cursor has no native "ask" mechanism, so we warn and allow
+    echo "[crunch] Command requires confirmation (ask rule): $CMD → $REWRITTEN" >&2
+    ;;
+  *)
+    echo '{}'
+    exit 0
+    ;;
+esac
 
 # No change — nothing to do.
 if [ "$CMD" = "$REWRITTEN" ]; then
