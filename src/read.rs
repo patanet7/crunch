@@ -40,7 +40,7 @@ pub fn run(
     // Safety: if filter emptied a non-empty file, fall back to raw content
     if filtered.trim().is_empty() && !content.trim().is_empty() {
         eprintln!(
-            "rtk: warning: filter produced empty output for {} ({} bytes), showing raw content",
+            "crunch: warning: filter produced empty output for {} ({} bytes), showing raw content",
             file.display(),
             content.len()
         );
@@ -71,7 +71,7 @@ pub fn run(
     println!("{}", rtk_output);
     timer.track(
         &format!("cat {}", file.display()),
-        "rtk read",
+        "crunch read",
         &content,
         &rtk_output,
     );
@@ -134,7 +134,7 @@ pub fn run_stdin(
     };
     println!("{}", rtk_output);
 
-    timer.track("cat - (stdin)", "rtk read -", &content, &rtk_output);
+    timer.track("cat - (stdin)", "crunch read -", &content, &rtk_output);
     Ok(())
 }
 

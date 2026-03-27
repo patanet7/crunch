@@ -56,7 +56,7 @@ pub fn run_format(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("dotnet format {}", args.join(" ")),
-        &format!("rtk dotnet format {}", args.join(" ")),
+        &format!("crunch dotnet format {}", args.join(" ")),
         &raw,
         &filtered,
     );
@@ -106,7 +106,7 @@ pub fn run_passthrough(args: &[OsString], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("dotnet {}", subcommand),
-        &format!("rtk dotnet {}", subcommand),
+        &format!("crunch dotnet {}", subcommand),
         &raw,
         &raw,
     );
@@ -243,7 +243,7 @@ fn run_dotnet_with_binlog(subcommand: &str, args: &[String], verbose: u8) -> Res
 
     timer.track(
         &format!("dotnet {} {}", subcommand, args.join(" ")),
-        &format!("rtk dotnet {} {}", subcommand, args.join(" ")),
+        &format!("crunch dotnet {} {}", subcommand, args.join(" ")),
         &raw,
         &output_to_print,
     );
@@ -268,14 +268,17 @@ fn run_dotnet_with_binlog(subcommand: &str, args: &[String], verbose: u8) -> Res
 
 fn build_binlog_path(subcommand: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "rtk_dotnet_{}_{}.binlog",
+        "crunch_dotnet_{}_{}.binlog",
         subcommand,
         unique_temp_suffix()
     ))
 }
 
 fn build_trx_results_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("rtk_dotnet_testresults_{}", unique_temp_suffix()))
+    std::env::temp_dir().join(format!(
+        "crunch_dotnet_testresults_{}",
+        unique_temp_suffix()
+    ))
 }
 
 fn unique_temp_suffix() -> String {
@@ -303,7 +306,10 @@ fn resolve_trx_results_dir(subcommand: &str, args: &[String]) -> (Option<PathBuf
 }
 
 fn build_format_report_path() -> PathBuf {
-    std::env::temp_dir().join(format!("rtk_dotnet_format_{}.json", unique_temp_suffix()))
+    std::env::temp_dir().join(format!(
+        "crunch_dotnet_format_{}.json",
+        unique_temp_suffix()
+    ))
 }
 
 fn resolve_format_report_path(args: &[String]) -> (Option<PathBuf>, bool) {

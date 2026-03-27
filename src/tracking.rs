@@ -1,25 +1,25 @@
 //! Token savings tracking and analytics system.
 //!
-//! This module provides comprehensive tracking of RTK command executions,
+//! This module provides comprehensive tracking of crunch command executions,
 //! recording token savings, execution times, and providing aggregation APIs
 //! for daily/weekly/monthly statistics.
 //!
 //! # Architecture
 //!
-//! - Storage: SQLite database (~/.local/share/rtk/tracking.db)
+//! - Storage: SQLite database (~/.local/share/crunch/tracking.db)
 //! - Retention: 90-day automatic cleanup
 //! - Metrics: Input/output tokens, savings %, execution time
 //!
 //! # Quick Start
 //!
 //! ```no_run
-//! use rtk::tracking::{TimedExecution, Tracker};
+//! use crunch::tracking::{TimedExecution, Tracker};
 //!
 //! // Track a command execution
 //! let timer = TimedExecution::start();
 //! let input = "raw output";
 //! let output = "filtered output";
-//! timer.track("ls -la", "rtk ls", input, output);
+//! timer.track("ls -la", "crunch ls", input, output);
 //!
 //! // Query statistics
 //! let tracker = Tracker::new().unwrap();
@@ -73,17 +73,17 @@ const HISTORY_DAYS: i64 = 90;
 ///
 /// # Database Location
 ///
-/// - Linux: `~/.local/share/rtk/tracking.db`
-/// - macOS: `~/Library/Application Support/rtk/tracking.db`
-/// - Windows: `%APPDATA%\rtk\tracking.db`
+/// - Linux: `~/.local/share/crunch/tracking.db`
+/// - macOS: `~/Library/Application Support/crunch/tracking.db`
+/// - Windows: `%APPDATA%\crunch\tracking.db`
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use rtk::tracking::Tracker;
+/// use crunch::tracking::Tracker;
 ///
 /// let tracker = Tracker::new()?;
-/// tracker.record("ls -la", "rtk ls", 1000, 200, 50)?;
+/// tracker.record("ls -la", "crunch ls", 1000, 200, 50)?;
 ///
 /// let summary = tracker.get_summary()?;
 /// println!("Total saved: {} tokens", summary.total_saved);
@@ -100,7 +100,7 @@ pub struct Tracker {
 pub struct CommandRecord {
     /// UTC timestamp when command was executed
     pub timestamp: DateTime<Utc>,
-    /// RTK command that was executed (e.g., "rtk ls")
+    /// Crunch command that was executed (e.g., "crunch ls")
     pub rtk_cmd: String,
     /// Number of tokens saved (input - output)
     pub saved_tokens: usize,
@@ -136,7 +136,7 @@ pub struct GainSummary {
 
 /// Daily statistics for token savings and execution metrics.
 ///
-/// Serializable to JSON for export via `rtk gain --daily --format json`.
+/// Serializable to JSON for export via `crunch gain --daily --format json`.
 ///
 /// # JSON Schema
 ///
@@ -174,7 +174,7 @@ pub struct DayStats {
 
 /// Weekly statistics for token savings and execution metrics.
 ///
-/// Serializable to JSON for export via `rtk gain --weekly --format json`.
+/// Serializable to JSON for export via `crunch gain --weekly --format json`.
 /// Weeks start on Sunday (SQLite default).
 #[derive(Debug, Serialize)]
 pub struct WeekStats {
@@ -200,7 +200,7 @@ pub struct WeekStats {
 
 /// Monthly statistics for token savings and execution metrics.
 ///
-/// Serializable to JSON for export via `rtk gain --monthly --format json`.
+/// Serializable to JSON for export via `crunch gain --monthly --format json`.
 #[derive(Debug, Serialize)]
 pub struct MonthStats {
     /// Month identifier (YYYY-MM)
@@ -242,7 +242,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// # Ok::<(), anyhow::Error>(())
@@ -335,18 +335,18 @@ impl Tracker {
     /// # Arguments
     ///
     /// - `original_cmd`: The standard command (e.g., "ls -la")
-    /// - `rtk_cmd`: The RTK command used (e.g., "rtk ls")
+    /// - `rtk_cmd`: The crunch command used (e.g., "crunch ls")
     /// - `input_tokens`: Estimated tokens from standard command output
-    /// - `output_tokens`: Actual tokens from RTK output
+    /// - `output_tokens`: Actual tokens from crunch output
     /// - `exec_time_ms`: Execution time in milliseconds
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
-    /// tracker.record("ls -la", "rtk ls", 1000, 200, 50)?;
+    /// tracker.record("ls -la", "crunch ls", 1000, 200, 50)?;
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn record(
@@ -420,7 +420,7 @@ impl Tracker {
         Ok(())
     }
 
-    /// Get parse failure summary for `rtk gain --failures`.
+    /// Get parse failure summary for `crunch gain --failures`.
     pub fn get_parse_failure_summary(&self) -> Result<ParseFailureSummary> {
         let total: i64 = self
             .conn
@@ -489,7 +489,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// let summary = tracker.get_summary()?;
@@ -627,7 +627,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// let days = tracker.get_all_days()?;
@@ -700,7 +700,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// let weeks = tracker.get_by_week()?;
@@ -775,7 +775,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// let months = tracker.get_by_month()?;
@@ -851,7 +851,7 @@ impl Tracker {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::Tracker;
+    /// use crunch::tracking::Tracker;
     ///
     /// let tracker = Tracker::new()?;
     /// let recent = tracker.get_recent(10)?;
@@ -917,7 +917,7 @@ impl Tracker {
         )?;
         let rows = stmt.query_map(params![limit as i64], |row| {
             let cmd: String = row.get(0)?;
-            // Extract just the command name (e.g. "rtk git status" → "git")
+            // Extract just the command name (e.g. "crunch git status" → "git")
             Ok(cmd.split_whitespace().nth(1).unwrap_or(&cmd).to_string())
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -960,8 +960,8 @@ impl Tracker {
 }
 
 fn get_db_path() -> Result<PathBuf> {
-    // Priority 1: Environment variable RTK_DB_PATH
-    if let Ok(custom_path) = std::env::var("RTK_DB_PATH") {
+    // Priority 1: Environment variable CRUNCH_DB_PATH
+    if let Ok(custom_path) = std::env::var("CRUNCH_DB_PATH") {
         return Ok(PathBuf::from(custom_path));
     }
 
@@ -974,7 +974,7 @@ fn get_db_path() -> Result<PathBuf> {
 
     // Priority 3: Default platform-specific location
     let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    Ok(data_dir.join("rtk").join("history.db"))
+    Ok(data_dir.join("crunch").join("history.db"))
 }
 
 /// Individual parse failure record.
@@ -1016,7 +1016,7 @@ pub fn record_parse_failure_silent(raw_command: &str, error_message: &str, succe
 /// # Examples
 ///
 /// ```
-/// use rtk::tracking::estimate_tokens;
+/// use crunch::tracking::estimate_tokens;
 ///
 /// assert_eq!(estimate_tokens(""), 0);
 /// assert_eq!(estimate_tokens("abcd"), 1);  // 4 chars = 1 token
@@ -1037,12 +1037,12 @@ pub fn estimate_tokens(text: &str) -> usize {
 /// # Examples
 ///
 /// ```no_run
-/// use rtk::tracking::TimedExecution;
+/// use crunch::tracking::TimedExecution;
 ///
 /// let timer = TimedExecution::start();
 /// let input = execute_standard_command()?;
-/// let output = execute_rtk_command()?;
-/// timer.track("ls -la", "rtk ls", &input, &output);
+/// let output = execute_crunch_command()?;
+/// timer.track("ls -la", "crunch ls", &input, &output);
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub struct TimedExecution {
@@ -1059,11 +1059,11 @@ impl TimedExecution {
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::TimedExecution;
+    /// use crunch::tracking::TimedExecution;
     ///
     /// let timer = TimedExecution::start();
     /// // ... execute command ...
-    /// timer.track("cmd", "rtk cmd", "input", "output");
+    /// timer.track("cmd", "crunch cmd", "input", "output");
     /// ```
     pub fn start() -> Self {
         Self {
@@ -1081,19 +1081,19 @@ impl TimedExecution {
     /// # Arguments
     ///
     /// - `original_cmd`: Standard command (e.g., "ls -la")
-    /// - `rtk_cmd`: RTK command used (e.g., "rtk ls")
+    /// - `rtk_cmd`: crunch command used (e.g., "crunch ls")
     /// - `input`: Standard command output (for token estimation)
-    /// - `output`: RTK command output (for token estimation)
+    /// - `output`: crunch command output (for token estimation)
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::TimedExecution;
+    /// use crunch::tracking::TimedExecution;
     ///
     /// let timer = TimedExecution::start();
     /// let input = "long output...";
     /// let output = "short output";
-    /// timer.track("ls -la", "rtk ls", input, output);
+    /// timer.track("ls -la", "crunch ls", input, output);
     /// ```
     pub fn track(&self, original_cmd: &str, rtk_cmd: &str, input: &str, output: &str) {
         let elapsed_ms = self.start.elapsed().as_millis() as u64;
@@ -1120,16 +1120,16 @@ impl TimedExecution {
     /// # Arguments
     ///
     /// - `original_cmd`: Standard command (e.g., "git tag --list")
-    /// - `rtk_cmd`: RTK command used (e.g., "rtk git tag --list")
+    /// - `rtk_cmd`: crunch command used (e.g., "crunch git tag --list")
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use rtk::tracking::TimedExecution;
+    /// use crunch::tracking::TimedExecution;
     ///
     /// let timer = TimedExecution::start();
     /// // ... execute streaming command ...
-    /// timer.track_passthrough("git tag", "rtk git tag");
+    /// timer.track_passthrough("git tag", "crunch git tag");
     /// ```
     pub fn track_passthrough(&self, original_cmd: &str, rtk_cmd: &str) {
         let elapsed_ms = self.start.elapsed().as_millis() as u64;
@@ -1149,7 +1149,7 @@ impl TimedExecution {
 ///
 /// ```
 /// use std::ffi::OsString;
-/// use rtk::tracking::args_display;
+/// use crunch::tracking::args_display;
 ///
 /// let args = vec![OsString::from("status"), OsString::from("--short")];
 /// assert_eq!(args_display(&args), "status --short");
@@ -1171,20 +1171,20 @@ pub fn args_display(args: &[OsString]) -> String {
 /// # Arguments
 ///
 /// - `original_cmd`: Standard command (e.g., "ls -la")
-/// - `rtk_cmd`: RTK command used (e.g., "rtk ls")
+/// - `rtk_cmd`: crunch command used (e.g., "crunch ls")
 /// - `input`: Standard command output (for token estimation)
-/// - `output`: RTK command output (for token estimation)
+/// - `output`: crunch command output (for token estimation)
 ///
 /// # Migration
 ///
 /// ```no_run
-/// # use rtk::tracking::{track, TimedExecution};
+/// # use crunch::tracking::{track, TimedExecution};
 /// // Old (deprecated)
-/// track("ls -la", "rtk ls", "input", "output");
+/// track("ls -la", "crunch ls", "input", "output");
 ///
 /// // New (preferred)
 /// let timer = TimedExecution::start();
-/// timer.track("ls -la", "rtk ls", "input", "output");
+/// timer.track("ls -la", "crunch ls", "input", "output");
 /// ```
 #[deprecated(note = "Use TimedExecution instead")]
 #[allow(dead_code)]
@@ -1228,7 +1228,7 @@ mod tests {
         let tracker = Tracker::new().expect("Failed to create tracker");
 
         // Use unique test identifier to avoid conflicts with other tests
-        let test_cmd = format!("rtk git status test_{}", std::process::id());
+        let test_cmd = format!("crunch git status test_{}", std::process::id());
 
         tracker
             .record("git status", &test_cmd, 100, 20, 50)
@@ -1253,8 +1253,8 @@ mod tests {
 
         // Use unique test identifiers
         let pid = std::process::id();
-        let cmd1 = format!("rtk cmd1_test_{}", pid);
-        let cmd2 = format!("rtk cmd2_passthrough_test_{}", pid);
+        let cmd1 = format!("crunch cmd1_test_{}", pid);
+        let cmd2 = format!("crunch cmd2_passthrough_test_{}", pid);
 
         // Record one real command with 80% savings
         tracker
@@ -1295,19 +1295,19 @@ mod tests {
     fn test_timed_execution_records_time() {
         let timer = TimedExecution::start();
         std::thread::sleep(std::time::Duration::from_millis(10));
-        timer.track("test cmd", "rtk test", "raw input data", "filtered");
+        timer.track("test cmd", "crunch test", "raw input data", "filtered");
 
         // Verify via DB that record exists
         let tracker = Tracker::new().expect("Failed to create tracker");
         let recent = tracker.get_recent(5).expect("Failed to get recent");
-        assert!(recent.iter().any(|r| r.rtk_cmd == "rtk test"));
+        assert!(recent.iter().any(|r| r.rtk_cmd == "crunch test"));
     }
 
     // 6. TimedExecution::track_passthrough records with 0 tokens
     #[test]
     fn test_timed_execution_passthrough() {
         let timer = TimedExecution::start();
-        timer.track_passthrough("git tag", "rtk git tag (passthrough)");
+        timer.track_passthrough("git tag", "crunch git tag (passthrough)");
 
         let tracker = Tracker::new().expect("Failed to create tracker");
         let recent = tracker.get_recent(5).expect("Failed to get recent");
@@ -1322,18 +1322,18 @@ mod tests {
         assert_eq!(pt.saved_tokens, 0);
     }
 
-    // 7. get_db_path respects environment variable RTK_DB_PATH
+    // 7. get_db_path respects environment variable CRUNCH_DB_PATH
     #[test]
     fn test_custom_db_path_env() {
         use std::env;
 
-        let custom_path = "/tmp/rtk_test_custom.db";
-        env::set_var("RTK_DB_PATH", custom_path);
+        let custom_path = "/tmp/crunch_test_custom.db";
+        env::set_var("CRUNCH_DB_PATH", custom_path);
 
         let db_path = get_db_path().expect("Failed to get db path");
         assert_eq!(db_path, PathBuf::from(custom_path));
 
-        env::remove_var("RTK_DB_PATH");
+        env::remove_var("CRUNCH_DB_PATH");
     }
 
     // 8. get_db_path falls back to default when no custom config
@@ -1342,10 +1342,10 @@ mod tests {
         use std::env;
 
         // Ensure no env var is set
-        env::remove_var("RTK_DB_PATH");
+        env::remove_var("CRUNCH_DB_PATH");
 
         let db_path = get_db_path().expect("Failed to get db path");
-        assert!(db_path.ends_with("rtk/history.db"));
+        assert!(db_path.ends_with("crunch/history.db"));
     }
 
     // 9. project_filter_params uses GLOB pattern with * wildcard // added

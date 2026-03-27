@@ -69,7 +69,7 @@ fn run_diff(
         .iter()
         .any(|arg| arg == "--stat" || arg == "--numstat" || arg == "--shortstat");
 
-    // Check if user wants compact diff (default RTK behavior)
+    // Check if user wants compact diff (default crunch behavior)
     let wants_compact = !args.iter().any(|arg| arg == "--no-compact");
 
     if wants_stat || !wants_compact {
@@ -78,7 +78,7 @@ fn run_diff(
         cmd.arg("diff");
         for arg in args {
             if arg == "--no-compact" {
-                continue; // RTK flag, not a git flag
+                continue; // crunch flag, not a git flag
             }
             cmd.arg(arg);
         }
@@ -96,7 +96,7 @@ fn run_diff(
 
         timer.track(
             &format!("git diff {}", args.join(" ")),
-            &format!("rtk git diff {} (passthrough)", args.join(" ")),
+            &format!("crunch git diff {} (passthrough)", args.join(" ")),
             &stdout,
             &stdout,
         );
@@ -104,7 +104,7 @@ fn run_diff(
         return Ok(());
     }
 
-    // Default RTK behavior: stat first, then compacted diff
+    // Default crunch behavior: stat first, then compacted diff
     let mut cmd = git_cmd(global_args);
     cmd.arg("diff").arg("--stat");
 
@@ -123,7 +123,7 @@ fn run_diff(
         let raw = stat_stdout.to_string();
         timer.track(
             &format!("git diff {}", args.join(" ")),
-            &format!("rtk git diff {}", args.join(" ")),
+            &format!("crunch git diff {}", args.join(" ")),
             &raw,
             &raw,
         );
@@ -158,7 +158,7 @@ fn run_diff(
 
     timer.track(
         &format!("git diff {}", args.join(" ")),
-        &format!("rtk git diff {}", args.join(" ")),
+        &format!("crunch git diff {}", args.join(" ")),
         &format!("{}\n{}", stat_stdout, diff_stdout),
         &final_output,
     );
@@ -208,7 +208,7 @@ fn run_show(
 
         timer.track(
             &format!("git show {}", args.join(" ")),
-            &format!("rtk git show {} (passthrough)", args.join(" ")),
+            &format!("crunch git show {} (passthrough)", args.join(" ")),
             &stdout,
             &stdout,
         );
@@ -277,7 +277,7 @@ fn run_show(
 
     timer.track(
         &format!("git show {}", args.join(" ")),
-        &format!("rtk git show {}", args.join(" ")),
+        &format!("crunch git show {}", args.join(" ")),
         &raw_output,
         &final_output,
     );
@@ -373,7 +373,7 @@ pub(crate) fn compact_diff(diff: &str, max_lines: usize) -> String {
     }
 
     if was_truncated {
-        result.push("[full diff: rtk git diff --no-compact]".to_string());
+        result.push("[full diff: crunch git diff --no-compact]".to_string());
     }
 
     result.join("\n")
@@ -402,7 +402,7 @@ fn run_log(
             || arg.starts_with("--max-count")
     });
 
-    // Apply RTK defaults only if user didn't specify them
+    // Apply crunch defaults only if user didn't specify them
     // Use %b (body) to preserve first line of commit body for agent context
     // (BREAKING CHANGE, Closes #xxx, design notes)
     if !has_format_flag {
@@ -452,13 +452,13 @@ fn run_log(
         eprintln!("Git log output:");
     }
 
-    // Post-process: truncate long messages, cap lines only if RTK set the default
+    // Post-process: truncate long messages, cap lines only if crunch set the default
     let filtered = filter_log_output(&stdout, limit, user_set_limit, has_format_flag);
     println!("{}", filtered);
 
     timer.track(
         &format!("git log {}", args.join(" ")),
-        &format!("rtk git log {}", args.join(" ")),
+        &format!("crunch git log {}", args.join(" ")),
         &stdout,
         &filtered,
     );
@@ -520,7 +520,7 @@ fn filter_log_output(
     let truncate_width = if user_set_limit { 120 } else { 80 };
 
     // When user specified their own format (--oneline, --pretty, --format),
-    // RTK did not inject ---END--- markers. Use simple line-based truncation.
+    // Crunch did not inject ---END--- markers. Use simple line-based truncation.
     if user_format {
         let lines: Vec<&str> = output.lines().collect();
         let max_lines = if user_set_limit { lines.len() } else { limit };
@@ -532,7 +532,7 @@ fn filter_log_output(
             .join("\n");
     }
 
-    // RTK injected format: split output into commit blocks separated by ---END---
+    // Crunch injected format: split output into commit blocks separated by ---END---
     let commits: Vec<&str> = output.split("---END---").collect();
     let max_commits = if user_set_limit { commits.len() } else { limit };
 
@@ -587,7 +587,7 @@ fn truncate_line(line: &str, width: usize) -> String {
     }
 }
 
-/// Format porcelain output into compact RTK status display
+/// Format porcelain output into compact crunch status display
 fn format_status_output(porcelain: &str) -> String {
     let lines: Vec<&str> = porcelain.lines().collect();
 
@@ -759,7 +759,7 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
             let raw = stdout.to_string();
             timer.track(
                 &format!("git status {}", args.join(" ")),
-                &format!("rtk git status {}", args.join(" ")),
+                &format!("crunch git status {}", args.join(" ")),
                 &raw,
                 &raw,
             );
@@ -776,7 +776,7 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
 
         timer.track(
             &format!("git status {}", args.join(" ")),
-            &format!("rtk git status {}", args.join(" ")),
+            &format!("crunch git status {}", args.join(" ")),
             &stdout,
             &filtered,
         );
@@ -784,7 +784,7 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
         return Ok(());
     }
 
-    // Default RTK compact mode (no args provided)
+    // Default crunch compact mode (no args provided)
     // Get raw git status for tracking
     let raw_output = git_cmd(global_args)
         .args(["status"])
@@ -803,7 +803,7 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
     if !stderr.is_empty() && stderr.contains("not a git repository") {
         let message = "Not a git repository".to_string();
         eprintln!("{}", message);
-        timer.track("git status", "rtk git status", &raw_output, &message);
+        timer.track("git status", "crunch git status", &raw_output, &message);
         std::process::exit(output.status.code().unwrap_or(128));
     }
 
@@ -812,7 +812,7 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
     println!("{}", formatted);
 
     // Track for statistics
-    timer.track("git status", "rtk git status", &raw_output, &formatted);
+    timer.track("git status", "crunch git status", &raw_output, &formatted);
 
     Ok(())
 }
@@ -868,7 +868,7 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<()> {
 
         timer.track(
             &format!("git add {}", args.join(" ")),
-            &format!("rtk git add {}", args.join(" ")),
+            &format!("crunch git add {}", args.join(" ")),
             &raw_output,
             &compact,
         );
@@ -934,13 +934,13 @@ fn run_commit(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
 
         println!("{}", compact);
 
-        timer.track(&original_cmd, "rtk git commit", &raw_output, &compact);
+        timer.track(&original_cmd, "crunch git commit", &raw_output, &compact);
     } else {
         if stderr.contains("nothing to commit") || stdout.contains("nothing to commit") {
             println!("ok (nothing to commit)");
             timer.track(
                 &original_cmd,
-                "rtk git commit",
+                "crunch git commit",
                 &raw_output,
                 "ok (nothing to commit)",
             );
@@ -951,7 +951,7 @@ fn run_commit(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
             if !stdout.trim().is_empty() {
                 eprint!("{}", stdout);
             }
-            timer.track(&original_cmd, "rtk git commit", &raw_output, &raw_output);
+            timer.track(&original_cmd, "crunch git commit", &raw_output, &raw_output);
             std::process::exit(output.status.code().unwrap_or(1));
         }
     }
@@ -1003,7 +1003,7 @@ fn run_push(args: &[String], verbose: u8, global_args: &[String]) -> Result<()> 
 
         timer.track(
             &format!("git push {}", args.join(" ")),
-            &format!("rtk git push {}", args.join(" ")),
+            &format!("crunch git push {}", args.join(" ")),
             &raw,
             &compact,
         );
@@ -1089,7 +1089,7 @@ fn run_pull(args: &[String], verbose: u8, global_args: &[String]) -> Result<()> 
 
         timer.track(
             &format!("git pull {}", args.join(" ")),
-            &format!("rtk git pull {}", args.join(" ")),
+            &format!("crunch git pull {}", args.join(" ")),
             &raw_output,
             &compact,
         );
@@ -1169,7 +1169,7 @@ fn run_branch(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
         let trimmed = stdout.trim();
         timer.track(
             &format!("git branch {}", args.join(" ")),
-            &format!("rtk git branch {}", args.join(" ")),
+            &format!("crunch git branch {}", args.join(" ")),
             &combined,
             trimmed,
         );
@@ -1206,7 +1206,7 @@ fn run_branch(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
 
         timer.track(
             &format!("git branch {}", args.join(" ")),
-            &format!("rtk git branch {}", args.join(" ")),
+            &format!("crunch git branch {}", args.join(" ")),
             &combined,
             msg,
         );
@@ -1248,7 +1248,7 @@ fn run_branch(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
         }
         timer.track(
             &format!("git branch {}", args.join(" ")),
-            &format!("rtk git branch {}", args.join(" ")),
+            &format!("crunch git branch {}", args.join(" ")),
             &raw,
             &raw,
         );
@@ -1260,7 +1260,7 @@ fn run_branch(args: &[String], verbose: u8, global_args: &[String]) -> Result<()
 
     timer.track(
         &format!("git branch {}", args.join(" ")),
-        &format!("rtk git branch {}", args.join(" ")),
+        &format!("crunch git branch {}", args.join(" ")),
         &raw,
         &filtered,
     );
@@ -1361,7 +1361,7 @@ fn run_fetch(args: &[String], verbose: u8, global_args: &[String]) -> Result<()>
     };
 
     println!("{}", msg);
-    timer.track("git fetch", "rtk git fetch", &raw, &msg);
+    timer.track("git fetch", "crunch git fetch", &raw, &msg);
 
     Ok(())
 }
@@ -1390,13 +1390,13 @@ fn run_stash(
             if stdout.trim().is_empty() {
                 let msg = "No stashes";
                 println!("{}", msg);
-                timer.track("git stash list", "rtk git stash list", &raw, msg);
+                timer.track("git stash list", "crunch git stash list", &raw, msg);
                 return Ok(());
             }
 
             let filtered = filter_stash_list(&stdout);
             println!("{}", filtered);
-            timer.track("git stash list", "rtk git stash list", &raw, &filtered);
+            timer.track("git stash list", "crunch git stash list", &raw, &filtered);
         }
         Some("show") => {
             let mut cmd = git_cmd(global_args);
@@ -1418,7 +1418,7 @@ fn run_stash(
                 compacted
             };
 
-            timer.track("git stash show", "rtk git stash show", &raw, &filtered);
+            timer.track("git stash show", "crunch git stash show", &raw, &filtered);
         }
         Some("pop") | Some("apply") | Some("drop") | Some("push") => {
             let sub = subcommand.unwrap();
@@ -1446,7 +1446,7 @@ fn run_stash(
 
             timer.track(
                 &format!("git stash {}", sub),
-                &format!("rtk git stash {}", sub),
+                &format!("crunch git stash {}", sub),
                 &combined,
                 &msg,
             );
@@ -1481,7 +1481,7 @@ fn run_stash(
 
             timer.track(
                 &format!("git stash {}", sub),
-                &format!("rtk git stash {}", sub),
+                &format!("crunch git stash {}", sub),
                 &combined,
                 &msg,
             );
@@ -1520,7 +1520,7 @@ fn run_stash(
                 combined.clone()
             };
 
-            timer.track("git stash", "rtk git stash", &combined, &msg);
+            timer.track("git stash", "crunch git stash", &combined, &msg);
 
             if !output.status.success() {
                 std::process::exit(output.status.code().unwrap_or(1));
@@ -1583,7 +1583,7 @@ fn run_worktree(args: &[String], verbose: u8, global_args: &[String]) -> Result<
 
         timer.track(
             &format!("git worktree {}", args.join(" ")),
-            &format!("rtk git worktree {}", args.join(" ")),
+            &format!("crunch git worktree {}", args.join(" ")),
             &combined,
             msg,
         );
@@ -1611,7 +1611,7 @@ fn run_worktree(args: &[String], verbose: u8, global_args: &[String]) -> Result<
 
     let filtered = filter_worktree_list(&stdout);
     println!("{}", filtered);
-    timer.track("git worktree list", "rtk git worktree", &raw, &filtered);
+    timer.track("git worktree list", "crunch git worktree", &raw, &filtered);
 
     Ok(())
 }
@@ -1658,7 +1658,7 @@ pub fn run_passthrough(args: &[OsString], global_args: &[String], verbose: u8) -
     let args_str = tracking::args_display(args);
     timer.track_passthrough(
         &format!("git {}", args_str),
-        &format!("rtk git {} (passthrough)", args_str),
+        &format!("crunch git {} (passthrough)", args_str),
     );
 
     if !status.success() {
@@ -2285,15 +2285,15 @@ no changes added to commit (use "git add" and/or "git commit -a")
     #[test]
     #[ignore] // Requires `cargo build` first — run with `cargo test --ignored`
     fn test_git_status_not_a_repo_exits_nonzero() {
-        // Run rtk git status in a directory that is not a git repo
-        let tmp = std::env::temp_dir().join("rtk_test_not_a_repo");
+        // Run crunch git status in a directory that is not a git repo
+        let tmp = std::env::temp_dir().join("crunch_test_not_a_repo");
         let _ = std::fs::create_dir_all(&tmp);
 
         // Build the path to the test binary
         let bin_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("debug")
-            .join("rtk");
+            .join("crunch");
         assert!(
             bin_path.exists(),
             "Debug binary not found at {:?} — run `cargo build` first",
@@ -2303,7 +2303,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
             .args(["git", "status"])
             .current_dir(&tmp)
             .output()
-            .expect("Failed to run rtk");
+            .expect("Failed to run crunch");
 
         // Should exit with non-zero (128 from git)
         assert!(
@@ -2362,7 +2362,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
         }
         let result = compact_diff(&diff, 500);
         assert!(
-            result.contains("[full diff: rtk git diff --no-compact]"),
+            result.contains("[full diff: crunch git diff --no-compact]"),
             "Expected recovery hint when hunk is truncated, got:\n{}",
             result
         );

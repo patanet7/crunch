@@ -32,7 +32,7 @@ pub fn run_copilot() -> Result<()> {
     let v: Value = match serde_json::from_str(input) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[rtk hook] Failed to parse JSON input: {e}");
+            eprintln!("[crunch hook] Failed to parse JSON input: {e}");
             return Ok(());
         }
     };
@@ -112,7 +112,7 @@ fn handle_vscode(cmd: &str) -> Result<()> {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "permissionDecisionReason": "RTK auto-rewrite",
+            "permissionDecisionReason": "crunch auto-rewrite",
             "updatedInput": { "command": rewritten }
         }
     });

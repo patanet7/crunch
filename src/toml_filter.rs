@@ -1,17 +1,17 @@
-/// TOML-based filter DSL for RTK.
+/// TOML-based filter DSL for crunch.
 ///
 /// Provides a declarative pipeline of 8 stages that can be configured
 /// via TOML files. Lookup priority (first match wins):
-///   1. `.rtk/filters.toml`              — project-local, committable with the repo
-///   2. `~/.config/rtk/filters.toml`     — user-global, applies to all projects
+///   1. `.crunch/filters.toml`            — project-local, committable with the repo
+///   2. `~/.config/crunch/filters.toml`   — user-global, applies to all projects
 ///   3. Built-in TOML                     — `src/filters/*.toml`, concatenated by build.rs and embedded at compile time
 ///   4. Passthrough                       — no match, handled by caller
 ///
-/// `rtk init` generates a commented template for both levels (project or global).
+/// `crunch init` generates a commented template for both levels (project or global).
 ///
 /// Environment variables:
-///   - `RTK_NO_TOML=1`     — bypass TOML engine entirely
-///   - `RTK_TOML_DEBUG=1`  — print which filter matched and line counts to stderr
+///   - `CRUNCH_NO_TOML=1`     — bypass TOML engine entirely
+///   - `CRUNCH_TOML_DEBUG=1`  — print which filter matched and line counts to stderr
 ///
 /// Pipeline stages (applied in order):
 ///   1. strip_ansi           — remove ANSI escape codes
@@ -147,7 +147,7 @@ pub struct CompiledFilter {
 }
 
 // ---------------------------------------------------------------------------
-// Results for `rtk verify`
+// Results for `crunch verify`
 // ---------------------------------------------------------------------------
 
 /// Outcome of running a single inline test.
@@ -181,8 +181,8 @@ impl TomlFilterRegistry {
     fn load() -> Self {
         let mut filters = Vec::new();
 
-        // Priority 1: project-local .rtk/filters.toml (trust-gated)
-        let project_filter_path = std::path::Path::new(".rtk/filters.toml");
+        // Priority 1: project-local .crunch/filters.toml (trust-gated)
+        let project_filter_path = std::path::Path::new(".crunch/filters.toml");
         if project_filter_path.exists() {
             let trust_status = crate::trust::check_trust(project_filter_path)
                 .unwrap_or(crate::trust::TrustStatus::Untrusted);
@@ -192,28 +192,30 @@ impl TomlFilterRegistry {
                     if let Ok(content) = std::fs::read_to_string(project_filter_path) {
                         match Self::parse_and_compile(&content, "project") {
                             Ok(f) => filters.extend(f),
-                            Err(e) => eprintln!("[rtk] warning: .rtk/filters.toml: {}", e),
+                            Err(e) => eprintln!("[crunch] warning: .crunch/filters.toml: {}", e),
                         }
                     }
                 }
                 crate::trust::TrustStatus::Untrusted => {
-                    eprintln!("[rtk] WARNING: untrusted project filters (.rtk/filters.toml)");
-                    eprintln!("[rtk] Filters NOT applied. Run `rtk trust` to review and enable.");
+                    eprintln!("[crunch] WARNING: untrusted project filters (.crunch/filters.toml)");
+                    eprintln!(
+                        "[crunch] Filters NOT applied. Run `crunch trust` to review and enable."
+                    );
                 }
                 crate::trust::TrustStatus::ContentChanged { .. } => {
-                    eprintln!("[rtk] WARNING: .rtk/filters.toml changed since trusted.");
-                    eprintln!("[rtk] Filters NOT applied. Run `rtk trust` to re-review.");
+                    eprintln!("[crunch] WARNING: .crunch/filters.toml changed since trusted.");
+                    eprintln!("[crunch] Filters NOT applied. Run `crunch trust` to re-review.");
                 }
             }
         }
 
-        // Priority 2: user-global ~/.config/rtk/filters.toml
+        // Priority 2: user-global ~/.config/crunch/filters.toml
         if let Some(config_dir) = dirs::config_dir() {
-            let global_path = config_dir.join("rtk").join("filters.toml");
+            let global_path = config_dir.join("crunch").join("filters.toml");
             if let Ok(content) = std::fs::read_to_string(&global_path) {
                 match Self::parse_and_compile(&content, "user-global") {
                     Ok(f) => filters.extend(f),
-                    Err(e) => eprintln!("[rtk] warning: {}: {}", global_path.display(), e),
+                    Err(e) => eprintln!("[crunch] warning: {}: {}", global_path.display(), e),
                 }
             }
         }
@@ -222,7 +224,7 @@ impl TomlFilterRegistry {
         let builtin = BUILTIN_TOML;
         match Self::parse_and_compile(builtin, "builtin") {
             Ok(f) => filters.extend(f),
-            Err(e) => eprintln!("[rtk] warning: builtin filters: {}", e),
+            Err(e) => eprintln!("[crunch] warning: builtin filters: {}", e),
         }
 
         TomlFilterRegistry { filters }
@@ -243,7 +245,7 @@ impl TomlFilterRegistry {
         for (name, def) in file.filters {
             match compile_filter(name.clone(), def) {
                 Ok(f) => compiled.push(f),
-                Err(e) => eprintln!("[rtk] warning: filter '{}' in {}: {}", name, source, e),
+                Err(e) => eprintln!("[crunch] warning: filter '{}' in {}: {}", name, source, e),
             }
         }
         Ok(compiled)
@@ -319,7 +321,7 @@ fn compile_filter(name: String, def: TomlFilterDef) -> Result<CompiledFilter, St
     for cmd in RUST_HANDLED_COMMANDS {
         if match_regex.is_match(cmd) {
             eprintln!(
-                "[rtk] warning: filter '{}' match_command matches '{}' which is already \
+                "[crunch] warning: filter '{}' match_command matches '{}' which is already \
                  handled by a Rust module — this filter will never activate for that command",
                 name, cmd
             );
@@ -525,7 +527,7 @@ pub fn apply_filter(filter: &CompiledFilter, stdout: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// rtk verify — inline test execution
+// crunch verify — inline test execution
 // ---------------------------------------------------------------------------
 
 /// Run inline tests from loaded TOML files (builtin + project-local).
@@ -547,8 +549,8 @@ pub fn run_filter_tests(filter_name_opt: Option<&str>) -> VerifyResults {
         &mut tested_filter_names,
     );
 
-    // Trust-gated: only verify project-local filters if trusted (SA-2025-RTK-002)
-    let project_path = std::path::Path::new(".rtk/filters.toml");
+    // Trust-gated: only verify project-local filters if trusted (SA-2025-CRUNCH-002)
+    let project_path = std::path::Path::new(".crunch/filters.toml");
     if project_path.exists() {
         let trust_status =
             crate::trust::check_trust(project_path).unwrap_or(crate::trust::TrustStatus::Untrusted);
@@ -565,7 +567,7 @@ pub fn run_filter_tests(filter_name_opt: Option<&str>) -> VerifyResults {
                 }
             }
             _ => {
-                eprintln!("[rtk] WARNING: untrusted project filters skipped in verify");
+                eprintln!("[crunch] WARNING: untrusted project filters skipped in verify");
             }
         }
     }
@@ -595,7 +597,7 @@ fn collect_test_outcomes(
     let file: TomlFilterFile = match toml::from_str(content) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[rtk] warning: TOML parse error during verify: {}", e);
+            eprintln!("[crunch] warning: TOML parse error during verify: {}", e);
             return;
         }
     };
@@ -608,7 +610,10 @@ fn collect_test_outcomes(
             Ok(f) => {
                 compiled_filters.insert(name, f);
             }
-            Err(e) => eprintln!("[rtk] warning: filter '{}' compilation error: {}", name, e),
+            Err(e) => eprintln!(
+                "[crunch] warning: filter '{}' compilation error: {}",
+                name, e
+            ),
         }
     }
 
@@ -626,7 +631,7 @@ fn collect_test_outcomes(
             Some(f) => f,
             None => {
                 eprintln!(
-                    "[rtk] warning: [[tests.{}]] references unknown filter",
+                    "[crunch] warning: [[tests.{}]] references unknown filter",
                     filter_name
                 );
                 continue;
@@ -656,18 +661,18 @@ fn collect_test_outcomes(
 /// Find a matching filter from the global registry. Initialises the registry
 /// lazily on first call. Returns `None` if no filter matches.
 pub fn find_matching_filter(command: &str) -> Option<&'static CompiledFilter> {
-    if std::env::var("RTK_TOML_DEBUG").is_ok() {
+    if std::env::var("CRUNCH_TOML_DEBUG").is_ok() {
         eprintln!(
-            "[rtk:toml] looking up filter for: {:?} ({} filters loaded)",
+            "[crunch:toml] looking up filter for: {:?} ({} filters loaded)",
             command,
             REGISTRY.filters.len()
         );
     }
     let result = find_filter_in(command, &REGISTRY.filters);
-    if std::env::var("RTK_TOML_DEBUG").is_ok() {
+    if std::env::var("CRUNCH_TOML_DEBUG").is_ok() {
         match result {
-            Some(f) => eprintln!("[rtk:toml] matched filter: '{}'", f.name),
-            None => eprintln!("[rtk:toml] no filter matched — passthrough"),
+            Some(f) => eprintln!("[crunch:toml] matched filter: '{}'", f.name),
+            None => eprintln!("[crunch:toml] no filter matched — passthrough"),
         }
     }
     result

@@ -67,7 +67,7 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
     }
 
     print!("{}", rtk);
-    timer.track("cat */deps", "rtk deps", &raw, &rtk);
+    timer.track("cat */deps", "crunch deps", &raw, &rtk);
     Ok(())
 }
 

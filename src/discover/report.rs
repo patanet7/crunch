@@ -148,7 +148,7 @@ pub fn format_text(report: &DiscoverReport, limit: usize, verbose: bool) -> Stri
         out.push_str("\n");
     }
 
-    // RTK_DISABLED bypass warning
+    // CRUNCH_DISABLED bypass warning
     if report.rtk_disabled_count > 0 {
         out.push_str(&format!(
             "\nCRUNCH_DISABLED BYPASS -- {} commands ran without filtering\n",

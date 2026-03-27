@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Filename for the stored hash (dotfile alongside hook)
-const HASH_FILENAME: &str = ".rtk-hook.sha256";
+const HASH_FILENAME: &str = ".crunch-hook.sha256";
 
 /// Result of hook integrity verification
 #[derive(Debug, PartialEq)]
@@ -178,10 +178,10 @@ fn read_stored_hash(path: &Path) -> Result<String> {
     Ok(hash.to_string())
 }
 
-/// Resolve the default hook path (~/.claude/hooks/rtk-rewrite.sh)
+/// Resolve the default hook path (~/.claude/hooks/crunch-rewrite.sh)
 pub fn resolve_hook_path() -> Result<PathBuf> {
     dirs::home_dir()
-        .map(|h| h.join(".claude").join("hooks").join("rtk-rewrite.sh"))
+        .map(|h| h.join(".claude").join("hooks").join("crunch-rewrite.sh"))
         .context("Cannot determine home directory. Is $HOME set?")
 }
 
@@ -208,25 +208,25 @@ pub fn run_verify(verbose: u8) -> Result<()> {
             eprintln!("  Expected: {}", expected);
             eprintln!("  Actual:   {}", actual);
             eprintln!();
-            eprintln!("  The hook file has been modified outside of `rtk init`.");
+            eprintln!("  The hook file has been modified outside of `crunch init`.");
             eprintln!("  This could indicate tampering or a manual edit.");
             eprintln!();
-            eprintln!("  To restore: rtk init -g --auto-patch");
+            eprintln!("  To restore: crunch init -g --auto-patch");
             eprintln!("  To inspect: cat {}", hook_path.display());
             std::process::exit(1);
         }
         IntegrityStatus::NoBaseline => {
             println!("WARN  no baseline hash found");
             println!("      Hook exists but was installed before integrity checks.");
-            println!("      Run `rtk init -g` to establish baseline.");
+            println!("      Run `crunch init -g` to establish baseline.");
         }
         IntegrityStatus::NotInstalled => {
-            println!("SKIP  RTK hook not installed");
-            println!("      Run `rtk init -g` to install.");
+            println!("SKIP  Crunch hook not installed");
+            println!("      Run `crunch init -g` to install.");
         }
         IntegrityStatus::OrphanedHash => {
             eprintln!("WARN  hash file exists but hook is missing");
-            eprintln!("      Run `rtk init -g` to reinstall.");
+            eprintln!("      Run `crunch init -g` to reinstall.");
         }
     }
 
@@ -252,7 +252,7 @@ pub fn runtime_check() -> Result<()> {
             // Silently skip to avoid noise for users who haven't re-run init
         }
         IntegrityStatus::Tampered { expected, actual } => {
-            eprintln!("rtk: hook integrity check FAILED");
+            eprintln!("crunch: hook integrity check FAILED");
             eprintln!(
                 "  Expected hash: {}...",
                 expected.get(..16).unwrap_or(&expected)
@@ -262,16 +262,16 @@ pub fn runtime_check() -> Result<()> {
                 actual.get(..16).unwrap_or(&actual)
             );
             eprintln!();
-            eprintln!("  The hook at ~/.claude/hooks/rtk-rewrite.sh has been modified.");
-            eprintln!("  This may indicate tampering. RTK will not execute.");
+            eprintln!("  The hook at ~/.claude/hooks/crunch-rewrite.sh has been modified.");
+            eprintln!("  This may indicate tampering. Crunch will not execute.");
             eprintln!();
-            eprintln!("  To restore:  rtk init -g --auto-patch");
-            eprintln!("  To inspect:  rtk verify");
+            eprintln!("  To restore:  crunch init -g --auto-patch");
+            eprintln!("  To inspect:  crunch verify");
             std::process::exit(1);
         }
         IntegrityStatus::OrphanedHash => {
-            eprintln!("rtk: warning: hash file exists but hook is missing");
-            eprintln!("  Run `rtk init -g` to reinstall.");
+            eprintln!("crunch: warning: hash file exists but hook is missing");
+            eprintln!("  Run `crunch init -g` to reinstall.");
             // Don't block — hook is gone, nothing to exploit
         }
     }
@@ -371,7 +371,7 @@ mod tests {
     fn test_verify_orphaned_hash() {
         let temp = TempDir::new().unwrap();
         let hook = temp.path().join("rtk-rewrite.sh");
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
 
         // Create hash but no hook
         fs::write(
@@ -392,7 +392,7 @@ mod tests {
 
         store_hash(&hook).unwrap();
 
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
         assert!(hash_file.exists());
 
         let content = fs::read_to_string(&hash_file).unwrap();
@@ -435,7 +435,7 @@ mod tests {
 
         store_hash(&hook).unwrap();
 
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
         let perms = fs::metadata(&hash_file).unwrap().permissions();
         assert_eq!(perms.mode() & 0o777, 0o444, "Hash file should be read-only");
     }
@@ -447,7 +447,7 @@ mod tests {
         fs::write(&hook, "test").unwrap();
 
         store_hash(&hook).unwrap();
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
         assert!(hash_file.exists());
 
         let removed = remove_hash(&hook).unwrap();
@@ -468,7 +468,7 @@ mod tests {
     fn test_invalid_hash_file_rejected() {
         let temp = TempDir::new().unwrap();
         let hook = temp.path().join("rtk-rewrite.sh");
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
         fs::write(&hash_file, "not-a-valid-hash  rtk-rewrite.sh\n").unwrap();
@@ -481,7 +481,7 @@ mod tests {
     fn test_hash_only_no_filename_rejected() {
         let temp = TempDir::new().unwrap();
         let hook = temp.path().join("rtk-rewrite.sh");
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
         // Hash with no two-space separator and filename
@@ -502,7 +502,7 @@ mod tests {
     fn test_wrong_separator_rejected() {
         let temp = TempDir::new().unwrap();
         let hook = temp.path().join("rtk-rewrite.sh");
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
         // Single space instead of two-space separator
@@ -524,7 +524,7 @@ mod tests {
 
         store_hash(&hook).unwrap();
 
-        let hash_file = temp.path().join(".rtk-hook.sha256");
+        let hash_file = temp.path().join(".crunch-hook.sha256");
         let content = fs::read_to_string(&hash_file).unwrap();
 
         // Should be parseable by sha256sum -c

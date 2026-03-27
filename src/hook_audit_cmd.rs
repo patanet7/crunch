@@ -2,14 +2,14 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Default log file location (aligned with hook's $HOME/.local/share/rtk/).
+/// Default log file location (aligned with hook's $HOME/.local/share/crunch/).
 fn default_log_path() -> PathBuf {
-    if let Ok(dir) = std::env::var("RTK_AUDIT_DIR") {
+    if let Ok(dir) = std::env::var("CRUNCH_AUDIT_DIR") {
         PathBuf::from(dir).join("hook-audit.log")
     } else {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
         PathBuf::from(home)
-            .join(".local/share/rtk")
+            .join(".local/share/crunch")
             .join("hook-audit.log")
     }
 }
@@ -71,7 +71,9 @@ pub fn run(since_days: u64, verbose: u8) -> Result<()> {
 
     if !log_path.exists() {
         println!("No audit log found at {}", log_path.display());
-        println!("Enable audit mode: export RTK_HOOK_AUDIT=1 in your shell, then use Claude Code.");
+        println!(
+            "Enable audit mode: export CRUNCH_HOOK_AUDIT=1 in your shell, then use Claude Code."
+        );
         return Ok(());
     }
 
@@ -178,11 +180,11 @@ mod tests {
 
     #[test]
     fn test_parse_line_rewrite() {
-        let line = "2026-02-16T14:30:01Z | rewrite | git status | rtk git status";
+        let line = "2026-02-16T14:30:01Z | rewrite | git status | crunch git status";
         let entry = parse_line(line).unwrap();
         assert_eq!(entry.action, "rewrite");
         assert_eq!(entry.original_cmd, "git status");
-        assert_eq!(entry._rewritten_cmd, "rtk git status");
+        assert_eq!(entry._rewritten_cmd, "crunch git status");
     }
 
     #[test]

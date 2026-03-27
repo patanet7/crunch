@@ -66,7 +66,7 @@ pub fn run(
         println!("{}", msg);
         timer.track(
             &format!("grep -rn '{}' {}", pattern, path),
-            "rtk grep",
+            "crunch grep",
             &raw_output,
             &msg,
         );
@@ -141,7 +141,7 @@ pub fn run(
     print!("{}", rtk_output);
     timer.track(
         &format!("grep -rn '{}' {}", pattern, path),
-        "rtk grep",
+        "crunch grep",
         &raw_output,
         &rtk_output,
     );

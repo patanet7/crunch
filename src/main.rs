@@ -1148,7 +1148,12 @@ fn run_fallback(parse_error: clap::Error) -> Result<()> {
 
                 // Tee raw output BEFORE filtering on failure — lets LLM re-read if needed
                 let tee_hint = if !output.status.success() {
-                    tee::tee_and_hint_scoped(&stdout_raw, &args[0], &args[1..], output.status.code().unwrap_or(1))
+                    tee::tee_and_hint_scoped(
+                        &stdout_raw,
+                        &args[0],
+                        &args[1..],
+                        output.status.code().unwrap_or(1),
+                    )
                 } else {
                     None
                 };
@@ -2418,9 +2423,14 @@ mod tests {
 
     #[test]
     fn test_git_global_options_parsing() {
-        let cli =
-            Cli::try_parse_from(["crunch", "git", "--no-pager", "--no-optional-locks", "status"])
-                .unwrap();
+        let cli = Cli::try_parse_from([
+            "crunch",
+            "git",
+            "--no-pager",
+            "--no-optional-locks",
+            "status",
+        ])
+        .unwrap();
         match cli.command {
             Commands::Git {
                 no_pager,

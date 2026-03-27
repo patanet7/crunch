@@ -21,7 +21,7 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
 
     timer.track(
         &format!("mypy {}", args.join(" ")),
-        &format!("rtk mypy {}", args.join(" ")),
+        &format!("crunch mypy {}", args.join(" ")),
         raw,
         &filtered,
     );
@@ -67,7 +67,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("mypy {}", args.join(" ")),
-        &format!("rtk mypy {}", args.join(" ")),
+        &format!("crunch mypy {}", args.join(" ")),
         &raw,
         &filtered,
     );

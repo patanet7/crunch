@@ -105,7 +105,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("rubocop {}", args.join(" ")),
-        &format!("rtk rubocop {}", args.join(" ")),
+        &format!("crunch rubocop {}", args.join(" ")),
         &raw,
         &filtered,
     );
@@ -138,7 +138,7 @@ fn filter_rubocop_json(output: &str) -> String {
     let rubocop = match parsed {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[rtk] rubocop: JSON parse failed ({})", e);
+            eprintln!("[crunch] rubocop: JSON parse failed ({})", e);
             return crate::utils::fallback_tail(output, "rubocop (JSON parse error)", 5);
         }
     };

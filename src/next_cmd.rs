@@ -39,7 +39,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     println!("{}", filtered);
 
-    timer.track("next build", "rtk next build", &raw, &filtered);
+    timer.track("next build", "crunch next build", &raw, &filtered);
 
     // Preserve exit code for CI/CD
     if !output.status.success() {

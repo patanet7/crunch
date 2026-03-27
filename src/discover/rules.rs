@@ -207,7 +207,7 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     RtkRule {
-        // "next build" is stripped to "rtk next" — the build subcommand is internal
+        // "next build" is stripped to "crunch next" — the build subcommand is internal
         rtk_cmd: "crunch next",
         rewrite_prefixes: &["npx next build", "pnpm next build", "next build"],
         category: "Build",

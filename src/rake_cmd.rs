@@ -86,7 +86,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("rake {}", args.join(" ")),
-        &format!("rtk rake {}", args.join(" ")),
+        &format!("crunch rake {}", args.join(" ")),
         &raw,
         &filtered,
     );

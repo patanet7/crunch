@@ -23,12 +23,12 @@ impl SessionSummary {
     }
 }
 
-/// Count RTK-covered commands from extracted commands.
+/// Count crunch-covered commands from extracted commands.
 /// A command is "covered" if it either:
-/// - starts with "rtk " (explicit rtk invocation), or
+/// - starts with "crunch " (explicit crunch invocation), or
 /// - would be rewritten by the hook (classify_command returns Supported)
 ///
-/// Chained commands (e.g. "cd ./path && rtk ls") are split so each part
+/// Chained commands (e.g. "cd ./path && crunch ls") are split so each part
 /// is classified independently — matching the discover module's behavior.
 fn count_rtk_commands(cmds: &[ExtractedCommand]) -> (usize, usize, usize) {
     let mut total: usize = 0;
@@ -37,7 +37,7 @@ fn count_rtk_commands(cmds: &[ExtractedCommand]) -> (usize, usize, usize) {
         let parts = split_command_chain(&c.command);
         for part in &parts {
             total += 1;
-            if part.starts_with("rtk ")
+            if part.starts_with("crunch ")
                 || matches!(classify_command(part), Classification::Supported { .. })
             {
                 rtk += 1;
@@ -143,12 +143,12 @@ pub fn run(_verbose: u8) -> Result<()> {
     }
 
     // Display table
-    let header = "RTK Session Overview (last 10)";
+    let header = "Crunch Session Overview (last 10)";
     println!("{}", header);
     println!("{}", "-".repeat(70));
     println!(
         "{:<12} {:<12} {:>5} {:>5} {:>9} {:<7} {:>8}",
-        "Session", "Date", "Cmds", "RTK", "Adoption", "", "Output"
+        "Session", "Date", "Cmds", "Crunch", "Adoption", "", "Output"
     );
     println!("{}", "-".repeat(70));
 
@@ -181,7 +181,7 @@ pub fn run(_verbose: u8) -> Result<()> {
         0.0
     };
     println!("Average adoption: {:.0}%", avg_adoption);
-    println!("Tip: Run `rtk discover` to find missed RTK opportunities");
+    println!("Tip: Run `crunch discover` to find missed crunch opportunities");
 
     Ok(())
 }
@@ -218,9 +218,9 @@ mod tests {
     #[test]
     fn test_count_all_rtk() {
         let cmds = vec![
-            make_cmd("rtk git status", Some(200)),
-            make_cmd("rtk cargo test", Some(5000)),
-            make_cmd("rtk git log -10", Some(800)),
+            make_cmd("crunch git status", Some(200)),
+            make_cmd("crunch cargo test", Some(5000)),
+            make_cmd("crunch git log -10", Some(800)),
         ];
         let (total, rtk, output) = count_rtk_commands(&cmds);
         assert_eq!(total, 3);
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_count_hook_rewritten_commands() {
-        // Hook rewrites "git status" → "rtk git status" but JSONL logs the original.
+        // Hook rewrites "git status" → "crunch git status" but JSONL logs the original.
         // count_rtk_commands should detect these via classify_command.
         let cmds = vec![
             make_cmd("git status", Some(500)),
@@ -239,7 +239,7 @@ mod tests {
         ];
         let (total, rtk, output) = count_rtk_commands(&cmds);
         assert_eq!(total, 3);
-        // git status + cargo test are supported by RTK, echo is not
+        // git status + cargo test are supported by crunch, echo is not
         assert_eq!(rtk, 2);
         assert_eq!(output, 3600);
     }
@@ -247,14 +247,14 @@ mod tests {
     #[test]
     fn test_count_mixed_explicit_and_hook() {
         let cmds = vec![
-            make_cmd("rtk git status", Some(200)),  // explicit rtk
-            make_cmd("git log -5", Some(1000)),     // hook-rewritten (logged as raw)
-            make_cmd("rtk cargo test", Some(5000)), // explicit rtk
-            make_cmd("echo hello", None),           // not supported
+            make_cmd("crunch git status", Some(200)),  // explicit crunch
+            make_cmd("git log -5", Some(1000)),        // hook-rewritten (logged as raw)
+            make_cmd("crunch cargo test", Some(5000)), // explicit crunch
+            make_cmd("echo hello", None),              // not supported
         ];
         let (total, rtk, output) = count_rtk_commands(&cmds);
         assert_eq!(total, 4);
-        assert_eq!(rtk, 3); // rtk git status + git log + rtk cargo test
+        assert_eq!(rtk, 3); // crunch git status + git log + crunch cargo test
         assert_eq!(output, 6200);
     }
 
@@ -283,21 +283,21 @@ mod tests {
 
     #[test]
     fn test_count_chained_commands_split() {
-        // "cd ./path && rtk ls" is one ExtractedCommand but two logical commands.
+        // "cd ./path && crunch ls" is one ExtractedCommand but two logical commands.
         // cd is ignored/unsupported, ls is supported → 1 out of 2 covered.
-        let cmds = vec![make_cmd("cd ./your/app/path && rtk ls", Some(200))];
+        let cmds = vec![make_cmd("cd ./your/app/path && crunch ls", Some(200))];
         let (total, rtk, _) = count_rtk_commands(&cmds);
         assert_eq!(total, 2, "chain should split into 2 commands");
-        assert_eq!(rtk, 1, "only 'rtk ls' is RTK-covered");
+        assert_eq!(rtk, 1, "only 'crunch ls' is crunch-covered");
     }
 
     #[test]
     fn test_count_chained_all_supported() {
-        // Both parts are RTK-supported
+        // Both parts are crunch-supported
         let cmds = vec![make_cmd("git status && git log -5", Some(500))];
         let (total, rtk, _) = count_rtk_commands(&cmds);
         assert_eq!(total, 2, "chain should split into 2 commands");
-        assert_eq!(rtk, 2, "both git commands are RTK-covered");
+        assert_eq!(rtk, 2, "both git commands are crunch-covered");
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         let cmds = vec![make_cmd("cd /tmp; git status; echo done", Some(100))];
         let (total, rtk, _) = count_rtk_commands(&cmds);
         assert_eq!(total, 3, "semicolon chain splits into 3 commands");
-        assert_eq!(rtk, 1, "only git status is RTK-covered");
+        assert_eq!(rtk, 1, "only git status is crunch-covered");
     }
 
     #[test]
@@ -347,13 +347,13 @@ mod tests {
 
     #[test]
     fn test_parse_jsonl_session_and_count() {
-        // Simulate a session with 3 Bash commands: 2 rtk, 1 raw
+        // Simulate a session with 3 Bash commands: 2 crunch, 1 raw
         let jsonl = [
-            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"rtk git status"}}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"crunch git status"}}]}}"#,
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"On branch main"}]}}"#,
             r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"git log -5"}}]}}"#,
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"commit abc123\ncommit def456"}]}}"#,
-            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"rtk cargo test"}}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"crunch cargo test"}}]}}"#,
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t3","content":"test result: ok. 5 passed"}]}}"#,
         ];
 
@@ -367,8 +367,8 @@ mod tests {
 
         let (total, rtk, _output) = count_rtk_commands(&cmds);
         assert_eq!(total, 3, "should find 3 Bash commands");
-        // All 3 are RTK-covered: 2 explicit "rtk ..." + 1 hook-rewritten "git log"
-        assert_eq!(rtk, 3, "all 3 commands should be RTK-covered");
+        // All 3 are crunch-covered: 2 explicit "crunch ..." + 1 hook-rewritten "git log"
+        assert_eq!(rtk, 3, "all 3 commands should be crunch-covered");
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
         let jsonl = [
             r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/tmp/foo"}}]}}"#,
             r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Grep","input":{"pattern":"TODO"}}]}}"#,
-            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"rtk git status"}}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"crunch git status"}}]}}"#,
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t3","content":"clean"}]}}"#,
         ];
 
@@ -391,7 +391,7 @@ mod tests {
 
         let (total, rtk, _) = count_rtk_commands(&cmds);
         assert_eq!(total, 1, "only Bash tool should be counted");
-        assert_eq!(rtk, 1, "the one Bash command is rtk");
+        assert_eq!(rtk, 1, "the one Bash command is crunch");
     }
 
     #[test]
@@ -418,7 +418,7 @@ mod tests {
         // Claude often runs "cd ./path && git status" as a single Bash call.
         // The adoption metric should split the chain and count each part.
         let jsonl = [
-            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd ./your/app/path && rtk ls"}}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd ./your/app/path && crunch ls"}}]}}"#,
             r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"file1.rs\nfile2.rs"}]}}"#,
         ];
 
@@ -432,7 +432,7 @@ mod tests {
 
         assert_eq!(cmds.len(), 1, "one Bash tool call");
         let (total, rtk, _) = count_rtk_commands(&cmds);
-        assert_eq!(total, 2, "chain splits into cd + rtk ls");
-        assert_eq!(rtk, 1, "rtk ls is covered, cd is not");
+        assert_eq!(total, 2, "chain splits into cd + crunch ls");
+        assert_eq!(rtk, 1, "crunch ls is covered, cd is not");
     }
 }

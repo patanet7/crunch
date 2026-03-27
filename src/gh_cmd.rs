@@ -106,7 +106,7 @@ fn filter_markdown_segment(text: &str) -> String {
     s
 }
 
-/// Check if args contain --json flag (user wants specific JSON fields, not RTK filtering)
+/// Check if args contain --json flag (user wants specific JSON fields, not crunch filtering)
 fn has_json_flag(args: &[String]) -> bool {
     args.iter().any(|a| a == "--json")
 }
@@ -162,7 +162,7 @@ fn extract_identifier_and_extra_args(args: &[String]) -> Option<(String, Vec<Str
 
 /// Run a gh command with token-optimized output
 pub fn run(subcommand: &str, args: &[String], verbose: u8, ultra_compact: bool) -> Result<()> {
-    // When user explicitly passes --json, they want raw gh JSON output, not RTK filtering
+    // When user explicitly passes --json, they want raw gh JSON output, not crunch filtering
     if has_json_flag(args) {
         return run_passthrough("gh", subcommand, args);
     }
@@ -220,7 +220,7 @@ fn list_prs(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh pr list", "rtk gh pr list", &stderr, &stderr);
+        timer.track("gh pr list", "crunch gh pr list", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -279,7 +279,7 @@ fn list_prs(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
         }
     }
 
-    timer.track("gh pr list", "rtk gh pr list", &raw, &filtered);
+    timer.track("gh pr list", "crunch gh pr list", &raw, &filtered);
     Ok(())
 }
 
@@ -328,7 +328,7 @@ fn view_pr(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         timer.track(
             &format!("gh pr view {}", pr_number),
-            &format!("rtk gh pr view {}", pr_number),
+            &format!("crunch gh pr view {}", pr_number),
             &stderr,
             &stderr,
         );
@@ -465,7 +465,7 @@ fn view_pr(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
 
     timer.track(
         &format!("gh pr view {}", pr_number),
-        &format!("rtk gh pr view {}", pr_number),
+        &format!("crunch gh pr view {}", pr_number),
         &raw,
         &filtered,
     );
@@ -493,7 +493,7 @@ fn pr_checks(args: &[String], _verbose: u8, _ultra_compact: bool) -> Result<()> 
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         timer.track(
             &format!("gh pr checks {}", pr_number),
-            &format!("rtk gh pr checks {}", pr_number),
+            &format!("crunch gh pr checks {}", pr_number),
             &stderr,
             &stderr,
         );
@@ -553,7 +553,7 @@ fn pr_checks(args: &[String], _verbose: u8, _ultra_compact: bool) -> Result<()> 
 
     timer.track(
         &format!("gh pr checks {}", pr_number),
-        &format!("rtk gh pr checks {}", pr_number),
+        &format!("crunch gh pr checks {}", pr_number),
         &raw,
         &filtered,
     );
@@ -576,7 +576,7 @@ fn pr_status(_verbose: u8, _ultra_compact: bool) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh pr status", "rtk gh pr status", &stderr, &stderr);
+        timer.track("gh pr status", "crunch gh pr status", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -600,7 +600,7 @@ fn pr_status(_verbose: u8, _ultra_compact: bool) -> Result<()> {
         }
     }
 
-    timer.track("gh pr status", "rtk gh pr status", &raw, &filtered);
+    timer.track("gh pr status", "crunch gh pr status", &raw, &filtered);
     Ok(())
 }
 
@@ -631,7 +631,7 @@ fn list_issues(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()>
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh issue list", "rtk gh issue list", &stderr, &stderr);
+        timer.track("gh issue list", "crunch gh issue list", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -674,7 +674,7 @@ fn list_issues(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()>
         }
     }
 
-    timer.track("gh issue list", "rtk gh issue list", &raw, &filtered);
+    timer.track("gh issue list", "crunch gh issue list", &raw, &filtered);
     Ok(())
 }
 
@@ -712,7 +712,7 @@ fn view_issue(args: &[String], _verbose: u8) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         timer.track(
             &format!("gh issue view {}", issue_number),
-            &format!("rtk gh issue view {}", issue_number),
+            &format!("crunch gh issue view {}", issue_number),
             &stderr,
             &stderr,
         );
@@ -771,7 +771,7 @@ fn view_issue(args: &[String], _verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("gh issue view {}", issue_number),
-        &format!("rtk gh issue view {}", issue_number),
+        &format!("crunch gh issue view {}", issue_number),
         &raw,
         &filtered,
     );
@@ -811,7 +811,7 @@ fn list_runs(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh run list", "rtk gh run list", &stderr, &stderr);
+        timer.track("gh run list", "crunch gh run list", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -869,7 +869,7 @@ fn list_runs(args: &[String], _verbose: u8, ultra_compact: bool) -> Result<()> {
         }
     }
 
-    timer.track("gh run list", "rtk gh run list", &raw, &filtered);
+    timer.track("gh run list", "crunch gh run list", &raw, &filtered);
     Ok(())
 }
 
@@ -908,7 +908,7 @@ fn view_run(args: &[String], _verbose: u8) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         timer.track(
             &format!("gh run view {}", run_id),
-            &format!("rtk gh run view {}", run_id),
+            &format!("crunch gh run view {}", run_id),
             &stderr,
             &stderr,
         );
@@ -950,7 +950,7 @@ fn view_run(args: &[String], _verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("gh run view {}", run_id),
-        &format!("rtk gh run view {}", run_id),
+        &format!("crunch gh run view {}", run_id),
         &raw,
         &filtered,
     );
@@ -988,7 +988,7 @@ fn run_repo(args: &[String], _verbose: u8, _ultra_compact: bool) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh repo view", "rtk gh repo view", &stderr, &stderr);
+        timer.track("gh repo view", "crunch gh repo view", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -1030,7 +1030,7 @@ fn run_repo(args: &[String], _verbose: u8, _ultra_compact: bool) -> Result<()> {
     filtered.push_str(&line);
     print!("{}", line);
 
-    timer.track("gh repo view", "rtk gh repo view", &raw, &filtered);
+    timer.track("gh repo view", "crunch gh repo view", &raw, &filtered);
     Ok(())
 }
 
@@ -1048,7 +1048,7 @@ fn pr_create(args: &[String], _verbose: u8) -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        timer.track("gh pr create", "rtk gh pr create", &stderr, &stderr);
+        timer.track("gh pr create", "crunch gh pr create", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -1068,7 +1068,7 @@ fn pr_create(args: &[String], _verbose: u8) -> Result<()> {
     let filtered = ok_confirmation("created", &detail);
     println!("{}", filtered);
 
-    timer.track("gh pr create", "rtk gh pr create", &stdout, &filtered);
+    timer.track("gh pr create", "crunch gh pr create", &stdout, &filtered);
     Ok(())
 }
 
@@ -1086,7 +1086,7 @@ fn pr_merge(args: &[String], _verbose: u8) -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        timer.track("gh pr merge", "rtk gh pr merge", &stderr, &stderr);
+        timer.track("gh pr merge", "crunch gh pr merge", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -1114,7 +1114,7 @@ fn pr_merge(args: &[String], _verbose: u8) -> Result<()> {
         detail.clone()
     };
 
-    timer.track("gh pr merge", "rtk gh pr merge", &raw, &filtered);
+    timer.track("gh pr merge", "crunch gh pr merge", &raw, &filtered);
     Ok(())
 }
 
@@ -1158,7 +1158,7 @@ fn pr_diff(args: &[String], _verbose: u8) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        timer.track("gh pr diff", "rtk gh pr diff", &stderr, &stderr);
+        timer.track("gh pr diff", "crunch gh pr diff", &stderr, &stderr);
         eprintln!("{}", stderr.trim());
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -1173,7 +1173,7 @@ fn pr_diff(args: &[String], _verbose: u8) -> Result<()> {
         compacted
     };
 
-    timer.track("gh pr diff", "rtk gh pr diff", &raw, &filtered);
+    timer.track("gh pr diff", "crunch gh pr diff", &raw, &filtered);
     Ok(())
 }
 
@@ -1197,7 +1197,7 @@ fn pr_action(action: &str, args: &[String], _verbose: u8) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         timer.track(
             &format!("gh pr {}", subcmd),
-            &format!("rtk gh pr {}", subcmd),
+            &format!("crunch gh pr {}", subcmd),
             &stderr,
             &stderr,
         );
@@ -1224,7 +1224,7 @@ fn pr_action(action: &str, args: &[String], _verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("gh pr {}", subcmd),
-        &format!("rtk gh pr {}", subcmd),
+        &format!("crunch gh pr {}", subcmd),
         &raw,
         &filtered,
     );
@@ -1261,7 +1261,7 @@ fn run_passthrough_with_extra(cmd: &str, base_args: &[&str], extra_args: &[Strin
         base_args.join(" "),
         tracking::args_display(&extra_args.iter().map(|s| s.into()).collect::<Vec<_>>())
     );
-    timer.track_passthrough(&full_cmd, &format!("rtk {} (passthrough)", full_cmd));
+    timer.track_passthrough(&full_cmd, &format!("crunch {} (passthrough)", full_cmd));
 
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
@@ -1286,7 +1286,7 @@ fn run_passthrough(cmd: &str, subcommand: &str, args: &[String]) -> Result<()> {
     let args_str = tracking::args_display(&args.iter().map(|s| s.into()).collect::<Vec<_>>());
     timer.track_passthrough(
         &format!("{} {} {}", cmd, subcommand, args_str),
-        &format!("rtk {} {} {} (passthrough)", cmd, subcommand, args_str),
+        &format!("crunch {} {} {} (passthrough)", cmd, subcommand, args_str),
     );
 
     if !status.success() {

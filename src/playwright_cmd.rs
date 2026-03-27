@@ -323,7 +323,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("playwright {}", args.join(" ")),
-        &format!("rtk playwright {}", args.join(" ")),
+        &format!("crunch playwright {}", args.join(" ")),
         &raw,
         &filtered,
     );

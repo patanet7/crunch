@@ -60,7 +60,7 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
 
     timer.track(
         &format!("ruff {}", args.join(" ")),
-        &format!("rtk ruff {}", args.join(" ")),
+        &format!("crunch ruff {}", args.join(" ")),
         raw,
         &filtered,
     );
@@ -142,7 +142,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("ruff {}", args.join(" ")),
-        &format!("rtk ruff {}", args.join(" ")),
+        &format!("crunch ruff {}", args.join(" ")),
         &raw,
         &filtered,
     );

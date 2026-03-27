@@ -436,7 +436,7 @@ fn display_summary(tracker: &Tracker, verbose: u8) -> Result<()> {
     let periods = merge_monthly(cc_monthly, rtk_monthly);
 
     if periods.is_empty() {
-        println!("No data available. Run some rtk commands to start tracking.");
+        println!("No data available. Run some crunch commands to start tracking.");
         return Ok(());
     }
 
@@ -469,7 +469,7 @@ fn display_summary(tracker: &Tracker, verbose: u8) -> Result<()> {
     );
     println!();
 
-    println!("  RTK commands:                 {}", totals.rtk_commands);
+    println!("  Crunch commands:              {}", totals.rtk_commands);
     println!(
         "  Tokens saved:                 {}",
         format_tokens(totals.rtk_saved_tokens)
@@ -591,7 +591,7 @@ fn print_period_table(periods: &[PeriodEconomics], verbose: u8) {
         // Verbose: include legacy metrics
         println!(
             "{:<12} {:>10} {:>10} {:>10} {:>10} {:>12} {:>12}",
-            "Period", "Spent", "Saved", "Savings", "Active$", "Blended$", "RTK Cmds"
+            "Period", "Spent", "Saved", "Savings", "Active$", "Blended$", "Crunch Cmds"
         );
         println!(
             "{:-<12} {:-<10} {:-<10} {:-<10} {:-<10} {:-<12} {:-<12}",
@@ -630,7 +630,7 @@ fn print_period_table(periods: &[PeriodEconomics], verbose: u8) {
         // Default: single Savings column
         println!(
             "{:<12} {:>10} {:>10} {:>10} {:>12}",
-            "Period", "Spent", "Saved", "Savings", "RTK Cmds"
+            "Period", "Spent", "Saved", "Savings", "Crunch Cmds"
         );
         println!(
             "{:-<12} {:-<10} {:-<10} {:-<10} {:-<12}",
@@ -730,7 +730,7 @@ fn export_csv(
     all: bool,
 ) -> Result<()> {
     // Header (new columns: input_tokens, output_tokens, cache_create, cache_read, weighted_savings)
-    println!("period,spent,input_tokens,output_tokens,cache_create,cache_read,active_tokens,total_tokens,saved_tokens,weighted_savings,active_savings,blended_savings,rtk_commands");
+    println!("period,spent,input_tokens,output_tokens,cache_create,cache_read,active_tokens,total_tokens,saved_tokens,weighted_savings,active_savings,blended_savings,crunch_commands");
 
     if all || daily {
         let cc = ccusage::fetch(Granularity::Daily)

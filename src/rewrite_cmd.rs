@@ -18,7 +18,7 @@ pub fn run(cmd: &str) -> anyhow::Result<()> {
         .map(|c| c.hooks.exclude_commands)
         .unwrap_or_default();
 
-    // SECURITY: check deny/ask BEFORE rewrite so non-RTK commands are also covered.
+    // SECURITY: check deny/ask BEFORE rewrite so non-crunch commands are also covered.
     let verdict = check_command(cmd);
 
     if verdict == PermissionVerdict::Deny {

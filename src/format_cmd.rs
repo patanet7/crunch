@@ -130,7 +130,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("{} {}", formatter, user_args.join(" ")),
-        &format!("rtk format {} {}", formatter, user_args.join(" ")),
+        &format!("crunch format {} {}", formatter, user_args.join(" ")),
         &raw,
         &filtered,
     );

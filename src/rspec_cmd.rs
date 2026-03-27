@@ -119,7 +119,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("rspec {}", args.join(" ")),
-        &format!("rtk rspec {}", args.join(" ")),
+        &format!("crunch rspec {}", args.join(" ")),
         &raw,
         &filtered,
     );
@@ -201,7 +201,7 @@ fn filter_rspec_output(output: &str) -> String {
         Ok(rspec) => return build_rspec_summary(&rspec),
         Err(e) => {
             eprintln!(
-                "[rtk] rspec: JSON parse failed ({}), using text fallback",
+                "[crunch] rspec: JSON parse failed ({}), using text fallback",
                 e
             );
         }

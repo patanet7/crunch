@@ -22,7 +22,7 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
 
     let filtered = filter_pytest_output(raw);
 
-    if let Some(hint) = crate::tee::tee_and_hint(raw, "pytest", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(raw, "pytest", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);
@@ -30,7 +30,7 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
 
     timer.track(
         &format!("pytest {}", args.join(" ")),
-        &format!("rtk pytest {}", args.join(" ")),
+        &format!("crunch pytest {}", args.join(" ")),
         raw,
         &filtered,
     );
@@ -88,7 +88,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         .status
         .code()
         .unwrap_or(if output.status.success() { 0 } else { 1 });
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "pytest", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "pytest", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);
@@ -101,7 +101,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     timer.track(
         &format!("pytest {}", args.join(" ")),
-        &format!("rtk pytest {}", args.join(" ")),
+        &format!("crunch pytest {}", args.join(" ")),
         &raw,
         &filtered,
     );

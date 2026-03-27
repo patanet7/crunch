@@ -23,7 +23,7 @@ fn glob_match_inner(pat: &[u8], name: &[u8]) -> bool {
     }
 }
 
-/// Parsed arguments from either native find or RTK find syntax.
+/// Parsed arguments from either native find or crunch find syntax.
 #[derive(Debug)]
 struct FindArgs {
     pattern: String,
@@ -60,7 +60,7 @@ fn has_native_find_flags(args: &[String]) -> bool {
         .any(|a| a == "-name" || a == "-type" || a == "-maxdepth" || a == "-iname")
 }
 
-/// Native find flags that RTK cannot handle correctly.
+/// Native find flags that crunch cannot handle correctly.
 /// These involve compound predicates, actions, or semantics we don't support.
 const UNSUPPORTED_FIND_FLAGS: &[&str] = &[
     "-not", "!", "-or", "-o", "-and", "-a", "-exec", "-execdir", "-delete", "-print0", "-newer",
@@ -73,10 +73,10 @@ fn has_unsupported_find_flags(args: &[String]) -> bool {
         .any(|a| UNSUPPORTED_FIND_FLAGS.contains(&a.as_str()))
 }
 
-/// Parse arguments from raw args vec, supporting both native find and RTK syntax.
+/// Parse arguments from raw args vec, supporting both native find and crunch syntax.
 ///
 /// Native find syntax: `find . -name "*.rs" -type f -maxdepth 3`
-/// RTK syntax: `find *.rs [path] [-m max] [-t type]`
+/// Crunch syntax: `find *.rs [path] [-m max] [-t type]`
 fn parse_find_args(args: &[String]) -> Result<FindArgs> {
     if args.is_empty() {
         return Ok(FindArgs::default());
@@ -84,7 +84,7 @@ fn parse_find_args(args: &[String]) -> Result<FindArgs> {
 
     if has_unsupported_find_flags(args) {
         anyhow::bail!(
-            "rtk find does not support compound predicates or actions (e.g. -not, -exec). Use `find` directly."
+            "crunch find does not support compound predicates or actions (e.g. -not, -exec). Use `find` directly."
         );
     }
 
@@ -130,7 +130,7 @@ fn parse_native_find_args(args: &[String]) -> Result<FindArgs> {
                 }
             }
             flag if flag.starts_with('-') => {
-                eprintln!("rtk find: unknown flag '{}', ignored", flag);
+                eprintln!("crunch find: unknown flag '{}', ignored", flag);
             }
             _ => {}
         }
@@ -140,7 +140,7 @@ fn parse_native_find_args(args: &[String]) -> Result<FindArgs> {
     Ok(parsed)
 }
 
-/// Parse RTK syntax: `find <pattern> [path] [-m max] [-t type]`
+/// Parse crunch syntax: `find <pattern> [path] [-m max] [-t type]`
 fn parse_rtk_find_args(args: &[String]) -> Result<FindArgs> {
     let mut parsed = FindArgs {
         pattern: args[0].clone(),
@@ -276,7 +276,7 @@ pub fn run(
         println!("{}", msg);
         timer.track(
             &format!("find {} -name '{}'", path, effective_pattern),
-            "rtk find",
+            "crunch find",
             &raw_output,
             &msg,
         );
@@ -370,7 +370,7 @@ pub fn run(
     let rtk_output = format!("{}F {}D + {}", total_files, dirs_count, ext_line);
     timer.track(
         &format!("find {} -name '{}'", path, effective_pattern),
-        "rtk find",
+        "crunch find",
         &raw_output,
         &rtk_output,
     );
@@ -503,7 +503,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // --- parse_find_args: RTK syntax ---
+    // --- parse_find_args: crunch syntax ---
 
     #[test]
     fn parse_rtk_syntax_pattern_only() {
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn run_from_args_rtk_syntax() {
-        // Simulates: rtk find *.rs src
+        // Simulates: crunch find *.rs src
         let result = run_from_args(&args(&["*.rs", "src"]), 0);
         assert!(result.is_ok());
     }

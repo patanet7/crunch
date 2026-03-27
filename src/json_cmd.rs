@@ -25,7 +25,7 @@ fn validate_json_extension(file: &Path) -> Result<()> {
                 fmt
             );
             if ext == "toml" && file.file_name().is_some_and(|n| n == "Cargo.toml") {
-                msg.push_str(" Tip: use `rtk deps` for Cargo.toml.");
+                msg.push_str(" Tip: use `crunch deps` for Cargo.toml.");
             }
             bail!("{}", msg);
         }
@@ -53,7 +53,7 @@ pub fn run(file: &Path, max_depth: usize, schema_only: bool, verbose: u8) -> Res
     println!("{}", output);
     timer.track(
         &format!("cat {}", file.display()),
-        "rtk json",
+        "crunch json",
         &content,
         &output,
     );
@@ -80,7 +80,7 @@ pub fn run_stdin(max_depth: usize, schema_only: bool, verbose: u8) -> Result<()>
         filter_json_compact(&content, max_depth)?
     };
     println!("{}", output);
-    timer.track("cat - (stdin)", "rtk json -", &content, &output);
+    timer.track("cat - (stdin)", "crunch json -", &content, &output);
     Ok(())
 }
 
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_cargo_toml_suggests_deps() {
         let err = validate_json_extension(Path::new("Cargo.toml")).unwrap_err();
-        assert!(err.to_string().contains("rtk deps"));
+        assert!(err.to_string().contains("crunch deps"));
     }
 
     #[test]
