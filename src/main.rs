@@ -35,6 +35,7 @@ mod lint_cmd;
 mod local_llm;
 mod log_cmd;
 mod ls;
+mod mise_cmd;
 mod mypy_cmd;
 mod next_cmd;
 mod npm_cmd;
