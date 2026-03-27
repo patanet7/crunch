@@ -308,16 +308,16 @@ fn strip_absolute_path(cmd: &str) -> String {
     }
 }
 
-/// Check if a command has RTK_DISABLED= prefix in its env prefix portion.
+/// Check if a command has CRUNCH_DISABLED= prefix in its env prefix portion.
 pub fn has_rtk_disabled_prefix(cmd: &str) -> bool {
     let trimmed = cmd.trim();
     let stripped = ENV_PREFIX.replace(trimmed, "");
     let prefix_len = trimmed.len() - stripped.len();
     let prefix_part = &trimmed[..prefix_len];
-    prefix_part.contains("RTK_DISABLED=")
+    prefix_part.contains("CRUNCH_DISABLED=")
 }
 
-/// Strip RTK_DISABLED=X and other env prefixes, return the actual command.
+/// Strip CRUNCH_DISABLED=X and other env prefixes, return the actual command.
 pub fn strip_disabled_prefix(cmd: &str) -> &str {
     let trimmed = cmd.trim();
     let stripped = ENV_PREFIX.replace(trimmed, "");
@@ -370,15 +370,15 @@ pub fn rewrite_command(cmd: &str, excluded: &[String]) -> Option<String> {
         return None;
     }
 
-    // Simple (non-compound) already-RTK command — return as-is.
-    // For compound commands that start with "rtk" (e.g. "rtk git add . && cargo test"),
+    // Simple (non-compound) already-Crunch command — return as-is.
+    // For compound commands that start with "rtk" (e.g. "crunch git add . && cargo test"),
     // fall through to rewrite_compound so the remaining segments get rewritten.
     let has_compound = trimmed.contains("&&")
         || trimmed.contains("||")
         || trimmed.contains(';')
         || trimmed.contains('|')
         || trimmed.contains(" & ");
-    if !has_compound && (trimmed.starts_with("rtk ") || trimmed == "rtk") {
+    if !has_compound && (trimmed.starts_with("crunch ") || trimmed == "crunch") {
         return Some(trimmed.to_string());
     }
 
@@ -537,12 +537,12 @@ fn rewrite_head_numeric(cmd: &str) -> Option<String> {
     if let Some(caps) = HEAD_N.captures(cmd) {
         let n = caps.get(1)?.as_str();
         let file = caps.get(2)?.as_str();
-        return Some(format!("rtk read {} --max-lines {}", file, n));
+        return Some(format!("crunch read {} --max-lines {}", file, n));
     }
     if let Some(caps) = HEAD_LINES.captures(cmd) {
         let n = caps.get(1)?.as_str();
         let file = caps.get(2)?.as_str();
-        return Some(format!("rtk read {} --max-lines {}", file, n));
+        return Some(format!("crunch read {} --max-lines {}", file, n));
     }
     // head with any other flag (e.g. -c, -q): skip rewriting to avoid clap errors
     if cmd.starts_with("head -") {
@@ -573,7 +573,7 @@ fn rewrite_tail_lines(cmd: &str) -> Option<String> {
         if let Some(caps) = re.captures(cmd) {
             let n = caps.get(1)?.as_str();
             let file = caps.get(2)?.as_str();
-            return Some(format!("rtk read {} --tail-lines {}", file, n));
+            return Some(format!("crunch read {} --tail-lines {}", file, n));
         }
     }
 
@@ -582,7 +582,7 @@ fn rewrite_tail_lines(cmd: &str) -> Option<String> {
 }
 
 /// Rewrite a single (non-compound) command segment.
-/// Returns `Some(rewritten)` if matched (including already-RTK pass-through).
+/// Returns `Some(rewritten)` if matched (including already-Crunch pass-through).
 /// Returns `None` if no match (caller uses original segment).
 fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     let trimmed = seg.trim();
@@ -594,8 +594,8 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     // e.g. "git status 2>&1" → match "git status", re-append " 2>&1"
     let (cmd_part, redirect_suffix) = strip_trailing_redirects(trimmed);
 
-    // Already RTK — pass through unchanged
-    if cmd_part.starts_with("rtk ") || cmd_part == "rtk" {
+    // Already Crunch — pass through unchanged
+    if cmd_part.starts_with("crunch ") || cmd_part == "crunch" {
         return Some(trimmed.to_string());
     }
 
@@ -635,14 +635,14 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     let env_prefix = &cmd_part[..env_prefix_len];
     let cmd_clean = stripped_cow.trim();
 
-    // #345: RTK_DISABLED=1 in env prefix → skip rewrite entirely
+    // #345: CRUNCH_DISABLED=1 in env prefix → skip rewrite entirely
     if has_rtk_disabled_prefix(cmd_part) {
         return None;
     }
 
     // #196: gh with --json/--jq/--template produces structured output that
-    // rtk gh would corrupt — skip rewrite so the caller gets raw JSON.
-    if rule.rtk_cmd == "rtk gh" {
+    // crunch gh would corrupt — skip rewrite so the caller gets raw JSON.
+    if rule.rtk_cmd == "crunch gh" {
         let args_lower = cmd_clean.to_lowercase();
         if args_lower.contains("--json")
             || args_lower.contains("--jq")
@@ -692,7 +692,7 @@ mod tests {
         assert_eq!(
             classify_command("git status"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -705,7 +705,7 @@ mod tests {
         assert_eq!(
             classify_command("git diff --cached"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(
             classify_command("cargo test filter::"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 90.0,
                 status: RtkStatus::Existing,
@@ -731,7 +731,7 @@ mod tests {
         assert_eq!(
             classify_command("npx tsc --noEmit"),
             Classification::Supported {
-                rtk_equivalent: "rtk tsc",
+                rtk_equivalent: "crunch tsc",
                 category: "Build",
                 estimated_savings_pct: 83.0,
                 status: RtkStatus::Existing,
@@ -744,7 +744,7 @@ mod tests {
         assert_eq!(
             classify_command("cat src/main.rs"),
             Classification::Supported {
-                rtk_equivalent: "rtk read",
+                rtk_equivalent: "crunch read",
                 category: "Files",
                 estimated_savings_pct: 60.0,
                 status: RtkStatus::Existing,
@@ -778,7 +778,10 @@ mod tests {
 
     #[test]
     fn test_classify_rtk_already() {
-        assert_eq!(classify_command("rtk git status"), Classification::Ignored);
+        assert_eq!(
+            classify_command("crunch git status"),
+            Classification::Ignored
+        );
     }
 
     #[test]
@@ -804,7 +807,7 @@ mod tests {
         assert_eq!(
             classify_command("GIT_SSH_COMMAND=ssh git push"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -817,7 +820,7 @@ mod tests {
         assert_eq!(
             classify_command("sudo docker ps"),
             Classification::Supported {
-                rtk_equivalent: "rtk docker",
+                rtk_equivalent: "crunch docker",
                 category: "Infra",
                 estimated_savings_pct: 85.0,
                 status: RtkStatus::Existing,
@@ -830,7 +833,7 @@ mod tests {
         assert_eq!(
             classify_command("cargo check"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -843,7 +846,7 @@ mod tests {
         assert_eq!(
             classify_command("cargo check --all-targets"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -856,7 +859,7 @@ mod tests {
         assert_eq!(
             classify_command("cargo fmt"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Passthrough,
@@ -869,7 +872,7 @@ mod tests {
         assert_eq!(
             classify_command("cargo clippy --all-targets"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -921,7 +924,7 @@ mod tests {
         assert_eq!(
             classify_command("find . -name foo"),
             Classification::Supported {
-                rtk_equivalent: "rtk find",
+                rtk_equivalent: "crunch find",
                 category: "Files",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -980,7 +983,7 @@ mod tests {
         assert_eq!(
             classify_command("mypy src/"),
             Classification::Supported {
-                rtk_equivalent: "rtk mypy",
+                rtk_equivalent: "crunch mypy",
                 category: "Build",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -993,7 +996,7 @@ mod tests {
         assert_eq!(
             classify_command("python3 -m mypy --strict"),
             Classification::Supported {
-                rtk_equivalent: "rtk mypy",
+                rtk_equivalent: "crunch mypy",
                 category: "Build",
                 estimated_savings_pct: 80.0,
                 status: RtkStatus::Existing,
@@ -1007,7 +1010,7 @@ mod tests {
     fn test_rewrite_git_status() {
         assert_eq!(
             rewrite_command("git status", &[]),
-            Some("rtk git status".into())
+            Some("crunch git status".into())
         );
     }
 
@@ -1015,7 +1018,7 @@ mod tests {
     fn test_rewrite_git_log() {
         assert_eq!(
             rewrite_command("git log -10", &[]),
-            Some("rtk git log -10".into())
+            Some("crunch git log -10".into())
         );
     }
 
@@ -1025,7 +1028,7 @@ mod tests {
     fn test_rewrite_git_dash_c_status() {
         assert_eq!(
             rewrite_command("git -C /path/to/repo status", &[]),
-            Some("rtk git -C /path/to/repo status".into())
+            Some("crunch git -C /path/to/repo status".into())
         );
     }
 
@@ -1033,7 +1036,7 @@ mod tests {
     fn test_rewrite_git_dash_c_log() {
         assert_eq!(
             rewrite_command("git -C /tmp/myrepo log --oneline -5", &[]),
-            Some("rtk git -C /tmp/myrepo log --oneline -5".into())
+            Some("crunch git -C /tmp/myrepo log --oneline -5".into())
         );
     }
 
@@ -1041,7 +1044,7 @@ mod tests {
     fn test_rewrite_git_dash_c_diff() {
         assert_eq!(
             rewrite_command("git -C /home/user/project diff --name-only", &[]),
-            Some("rtk git -C /home/user/project diff --name-only".into())
+            Some("crunch git -C /home/user/project diff --name-only".into())
         );
     }
 
@@ -1052,7 +1055,7 @@ mod tests {
             matches!(
                 result,
                 Classification::Supported {
-                    rtk_equivalent: "rtk git",
+                    rtk_equivalent: "crunch git",
                     ..
                 }
             ),
@@ -1065,7 +1068,7 @@ mod tests {
     fn test_rewrite_cargo_test() {
         assert_eq!(
             rewrite_command("cargo test", &[]),
-            Some("rtk cargo test".into())
+            Some("crunch cargo test".into())
         );
     }
 
@@ -1073,7 +1076,7 @@ mod tests {
     fn test_rewrite_compound_and() {
         assert_eq!(
             rewrite_command("git add . && cargo test", &[]),
-            Some("rtk git add . && rtk cargo test".into())
+            Some("crunch git add . && crunch cargo test".into())
         );
     }
 
@@ -1084,15 +1087,18 @@ mod tests {
                 "cargo fmt --all && cargo clippy --all-targets && cargo test",
                 &[]
             ),
-            Some("rtk cargo fmt --all && rtk cargo clippy --all-targets && rtk cargo test".into())
+            Some(
+                "crunch cargo fmt --all && crunch cargo clippy --all-targets && crunch cargo test"
+                    .into()
+            )
         );
     }
 
     #[test]
     fn test_rewrite_already_rtk() {
         assert_eq!(
-            rewrite_command("rtk git status", &[]),
-            Some("rtk git status".into())
+            rewrite_command("crunch git status", &[]),
+            Some("crunch git status".into())
         );
     }
 
@@ -1100,7 +1106,7 @@ mod tests {
     fn test_rewrite_background_single_amp() {
         assert_eq!(
             rewrite_command("cargo test & git status", &[]),
-            Some("rtk cargo test & rtk git status".into())
+            Some("crunch cargo test & crunch git status".into())
         );
     }
 
@@ -1108,7 +1114,7 @@ mod tests {
     fn test_rewrite_background_unsupported_right() {
         assert_eq!(
             rewrite_command("cargo test & htop", &[]),
-            Some("rtk cargo test & htop".into())
+            Some("crunch cargo test & htop".into())
         );
     }
 
@@ -1117,7 +1123,7 @@ mod tests {
         // `&&` must still work after adding `&` support
         assert_eq!(
             rewrite_command("cargo test && git status", &[]),
-            Some("rtk cargo test && rtk git status".into())
+            Some("crunch cargo test && crunch git status".into())
         );
     }
 
@@ -1135,7 +1141,7 @@ mod tests {
     fn test_rewrite_with_env_prefix() {
         assert_eq!(
             rewrite_command("GIT_SSH_COMMAND=ssh git push", &[]),
-            Some("GIT_SSH_COMMAND=ssh rtk git push".into())
+            Some("GIT_SSH_COMMAND=ssh crunch git push".into())
         );
     }
 
@@ -1143,7 +1149,7 @@ mod tests {
     fn test_rewrite_npx_tsc() {
         assert_eq!(
             rewrite_command("npx tsc --noEmit", &[]),
-            Some("rtk tsc --noEmit".into())
+            Some("crunch tsc --noEmit".into())
         );
     }
 
@@ -1151,7 +1157,7 @@ mod tests {
     fn test_rewrite_pnpm_tsc() {
         assert_eq!(
             rewrite_command("pnpm tsc --noEmit", &[]),
-            Some("rtk tsc --noEmit".into())
+            Some("crunch tsc --noEmit".into())
         );
     }
 
@@ -1159,7 +1165,7 @@ mod tests {
     fn test_rewrite_cat_file() {
         assert_eq!(
             rewrite_command("cat src/main.rs", &[]),
-            Some("rtk read src/main.rs".into())
+            Some("crunch read src/main.rs".into())
         );
     }
 
@@ -1167,7 +1173,7 @@ mod tests {
     fn test_rewrite_rg_pattern() {
         assert_eq!(
             rewrite_command("rg \"fn main\"", &[]),
-            Some("rtk grep \"fn main\"".into())
+            Some("crunch grep \"fn main\"".into())
         );
     }
 
@@ -1175,7 +1181,7 @@ mod tests {
     fn test_rewrite_npx_playwright() {
         assert_eq!(
             rewrite_command("npx playwright test", &[]),
-            Some("rtk playwright test".into())
+            Some("crunch playwright test".into())
         );
     }
 
@@ -1183,7 +1189,7 @@ mod tests {
     fn test_rewrite_next_build() {
         assert_eq!(
             rewrite_command("next build --turbo", &[]),
-            Some("rtk next --turbo".into())
+            Some("crunch next --turbo".into())
         );
     }
 
@@ -1192,7 +1198,7 @@ mod tests {
         // After a pipe, the filter command stays raw
         assert_eq!(
             rewrite_command("git log -10 | grep feat", &[]),
-            Some("rtk git log -10 | grep feat".into())
+            Some("crunch git log -10 | grep feat".into())
         );
     }
 
@@ -1216,7 +1222,7 @@ mod tests {
         // find WITHOUT a pipe should still be rewritten
         assert_eq!(
             rewrite_command("find . -name '*.rs'", &[]),
-            Some("rtk find . -name '*.rs'".into())
+            Some("crunch find . -name '*.rs'".into())
         );
     }
 
@@ -1235,30 +1241,30 @@ mod tests {
     fn test_rewrite_mixed_compound_partial() {
         // First segment already RTK, second gets rewritten
         assert_eq!(
-            rewrite_command("rtk git add . && cargo test", &[]),
-            Some("rtk git add . && rtk cargo test".into())
+            rewrite_command("crunch git add . && cargo test", &[]),
+            Some("crunch git add . && crunch cargo test".into())
         );
     }
 
-    // --- #345: RTK_DISABLED ---
+    // --- #345: CRUNCH_DISABLED ---
 
     #[test]
     fn test_rewrite_rtk_disabled_curl() {
         assert_eq!(
-            rewrite_command("RTK_DISABLED=1 curl https://example.com", &[]),
+            rewrite_command("CRUNCH_DISABLED=1 curl https://example.com", &[]),
             None
         );
     }
 
     #[test]
     fn test_rewrite_rtk_disabled_git_status() {
-        assert_eq!(rewrite_command("RTK_DISABLED=1 git status", &[]), None);
+        assert_eq!(rewrite_command("CRUNCH_DISABLED=1 git status", &[]), None);
     }
 
     #[test]
     fn test_rewrite_rtk_disabled_multi_env() {
         assert_eq!(
-            rewrite_command("FOO=1 RTK_DISABLED=1 git status", &[]),
+            rewrite_command("FOO=1 CRUNCH_DISABLED=1 git status", &[]),
             None
         );
     }
@@ -1267,7 +1273,7 @@ mod tests {
     fn test_rewrite_non_rtk_disabled_env_still_rewrites() {
         assert_eq!(
             rewrite_command("SOME_VAR=1 git status", &[]),
-            Some("SOME_VAR=1 rtk git status".into())
+            Some("SOME_VAR=1 crunch git status".into())
         );
     }
 
@@ -1277,7 +1283,7 @@ mod tests {
     fn test_rewrite_redirect_2_gt_amp_1_with_pipe() {
         assert_eq!(
             rewrite_command("cargo test 2>&1 | head", &[]),
-            Some("rtk cargo test 2>&1 | head".into())
+            Some("crunch cargo test 2>&1 | head".into())
         );
     }
 
@@ -1285,7 +1291,7 @@ mod tests {
     fn test_rewrite_redirect_2_gt_amp_1_trailing() {
         assert_eq!(
             rewrite_command("cargo test 2>&1", &[]),
-            Some("rtk cargo test 2>&1".into())
+            Some("crunch cargo test 2>&1".into())
         );
     }
 
@@ -1294,7 +1300,7 @@ mod tests {
         // 2>/dev/null has no `&`, never broken — non-regression
         assert_eq!(
             rewrite_command("git status 2>/dev/null", &[]),
-            Some("rtk git status 2>/dev/null".into())
+            Some("crunch git status 2>/dev/null".into())
         );
     }
 
@@ -1302,7 +1308,7 @@ mod tests {
     fn test_rewrite_redirect_2_gt_amp_1_with_and() {
         assert_eq!(
             rewrite_command("cargo test 2>&1 && echo done", &[]),
-            Some("rtk cargo test 2>&1 && echo done".into())
+            Some("crunch cargo test 2>&1 && echo done".into())
         );
     }
 
@@ -1310,7 +1316,7 @@ mod tests {
     fn test_rewrite_redirect_amp_gt_devnull() {
         assert_eq!(
             rewrite_command("cargo test &>/dev/null", &[]),
-            Some("rtk cargo test &>/dev/null".into())
+            Some("crunch cargo test &>/dev/null".into())
         );
     }
 
@@ -1319,7 +1325,7 @@ mod tests {
         // Double redirect: only last one stripped, but full command rewrites correctly
         assert_eq!(
             rewrite_command("git status 2>&1 >/dev/null", &[]),
-            Some("rtk git status 2>&1 >/dev/null".into())
+            Some("crunch git status 2>&1 >/dev/null".into())
         );
     }
 
@@ -1328,7 +1334,7 @@ mod tests {
         // 2>&- (close stderr fd)
         assert_eq!(
             rewrite_command("git status 2>&-", &[]),
-            Some("rtk git status 2>&-".into())
+            Some("crunch git status 2>&-".into())
         );
     }
 
@@ -1348,7 +1354,7 @@ mod tests {
         // background `&` must still work after redirect fix
         assert_eq!(
             rewrite_command("cargo test & git status", &[]),
-            Some("rtk cargo test & rtk git status".into())
+            Some("crunch cargo test & crunch git status".into())
         );
     }
 
@@ -1359,7 +1365,7 @@ mod tests {
         // head -20 file → rtk read file --max-lines 20 (not rtk read -20 file)
         assert_eq!(
             rewrite_command("head -20 src/main.rs", &[]),
-            Some("rtk read src/main.rs --max-lines 20".into())
+            Some("crunch read src/main.rs --max-lines 20".into())
         );
     }
 
@@ -1367,7 +1373,7 @@ mod tests {
     fn test_rewrite_head_lines_long_flag() {
         assert_eq!(
             rewrite_command("head --lines=50 src/lib.rs", &[]),
-            Some("rtk read src/lib.rs --max-lines 50".into())
+            Some("crunch read src/lib.rs --max-lines 50".into())
         );
     }
 
@@ -1376,7 +1382,7 @@ mod tests {
         // plain `head file` → `rtk read file` (no numeric flag)
         assert_eq!(
             rewrite_command("head src/main.rs", &[]),
-            Some("rtk read src/main.rs".into())
+            Some("crunch read src/main.rs".into())
         );
     }
 
@@ -1390,7 +1396,7 @@ mod tests {
     fn test_rewrite_tail_numeric_flag() {
         assert_eq!(
             rewrite_command("tail -20 src/main.rs", &[]),
-            Some("rtk read src/main.rs --tail-lines 20".into())
+            Some("crunch read src/main.rs --tail-lines 20".into())
         );
     }
 
@@ -1398,7 +1404,7 @@ mod tests {
     fn test_rewrite_tail_n_space_flag() {
         assert_eq!(
             rewrite_command("tail -n 12 src/lib.rs", &[]),
-            Some("rtk read src/lib.rs --tail-lines 12".into())
+            Some("crunch read src/lib.rs --tail-lines 12".into())
         );
     }
 
@@ -1406,7 +1412,7 @@ mod tests {
     fn test_rewrite_tail_lines_long_flag() {
         assert_eq!(
             rewrite_command("tail --lines=7 src/lib.rs", &[]),
-            Some("rtk read src/lib.rs --tail-lines 7".into())
+            Some("crunch read src/lib.rs --tail-lines 7".into())
         );
     }
 
@@ -1414,7 +1420,7 @@ mod tests {
     fn test_rewrite_tail_lines_space_flag() {
         assert_eq!(
             rewrite_command("tail --lines 7 src/lib.rs", &[]),
-            Some("rtk read src/lib.rs --tail-lines 7".into())
+            Some("crunch read src/lib.rs --tail-lines 7".into())
         );
     }
 
@@ -1435,7 +1441,7 @@ mod tests {
         assert!(matches!(
             classify_command("gh release list"),
             Classification::Supported {
-                rtk_equivalent: "rtk gh",
+                rtk_equivalent: "crunch gh",
                 ..
             }
         ));
@@ -1446,7 +1452,7 @@ mod tests {
         assert!(matches!(
             classify_command("cargo install rtk"),
             Classification::Supported {
-                rtk_equivalent: "rtk cargo",
+                rtk_equivalent: "crunch cargo",
                 ..
             }
         ));
@@ -1457,7 +1463,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker run --rm ubuntu bash"),
             Classification::Supported {
-                rtk_equivalent: "rtk docker",
+                rtk_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1468,7 +1474,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker exec -it mycontainer bash"),
             Classification::Supported {
-                rtk_equivalent: "rtk docker",
+                rtk_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1479,7 +1485,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker build -t myimage ."),
             Classification::Supported {
-                rtk_equivalent: "rtk docker",
+                rtk_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1490,7 +1496,7 @@ mod tests {
         assert!(matches!(
             classify_command("kubectl describe pod mypod"),
             Classification::Supported {
-                rtk_equivalent: "rtk kubectl",
+                rtk_equivalent: "crunch kubectl",
                 ..
             }
         ));
@@ -1501,7 +1507,7 @@ mod tests {
         assert!(matches!(
             classify_command("kubectl apply -f deploy.yaml"),
             Classification::Supported {
-                rtk_equivalent: "rtk kubectl",
+                rtk_equivalent: "crunch kubectl",
                 ..
             }
         ));
@@ -1512,7 +1518,7 @@ mod tests {
         assert!(matches!(
             classify_command("tree src/"),
             Classification::Supported {
-                rtk_equivalent: "rtk tree",
+                rtk_equivalent: "crunch tree",
                 ..
             }
         ));
@@ -1523,7 +1529,7 @@ mod tests {
         assert!(matches!(
             classify_command("diff file1.txt file2.txt"),
             Classification::Supported {
-                rtk_equivalent: "rtk diff",
+                rtk_equivalent: "crunch diff",
                 ..
             }
         ));
@@ -1533,7 +1539,7 @@ mod tests {
     fn test_rewrite_tree() {
         assert_eq!(
             rewrite_command("tree src/", &[]),
-            Some("rtk tree src/".into())
+            Some("crunch tree src/".into())
         );
     }
 
@@ -1541,7 +1547,7 @@ mod tests {
     fn test_rewrite_diff() {
         assert_eq!(
             rewrite_command("diff file1.txt file2.txt", &[]),
-            Some("rtk diff file1.txt file2.txt".into())
+            Some("crunch diff file1.txt file2.txt".into())
         );
     }
 
@@ -1549,7 +1555,7 @@ mod tests {
     fn test_rewrite_gh_release() {
         assert_eq!(
             rewrite_command("gh release list", &[]),
-            Some("rtk gh release list".into())
+            Some("crunch gh release list".into())
         );
     }
 
@@ -1557,7 +1563,7 @@ mod tests {
     fn test_rewrite_cargo_install() {
         assert_eq!(
             rewrite_command("cargo install rtk", &[]),
-            Some("rtk cargo install rtk".into())
+            Some("crunch cargo install rtk".into())
         );
     }
 
@@ -1565,7 +1571,7 @@ mod tests {
     fn test_rewrite_kubectl_describe() {
         assert_eq!(
             rewrite_command("kubectl describe pod mypod", &[]),
-            Some("rtk kubectl describe pod mypod".into())
+            Some("crunch kubectl describe pod mypod".into())
         );
     }
 
@@ -1573,7 +1579,7 @@ mod tests {
     fn test_rewrite_docker_run() {
         assert_eq!(
             rewrite_command("docker run --rm ubuntu bash", &[]),
-            Some("rtk docker run --rm ubuntu bash".into())
+            Some("crunch docker run --rm ubuntu bash".into())
         );
     }
 
@@ -1582,7 +1588,7 @@ mod tests {
         assert!(matches!(
             classify_command("swift test"),
             Classification::Supported {
-                rtk_equivalent: "rtk swift",
+                rtk_equivalent: "crunch swift",
                 category: "Build",
                 estimated_savings_pct: 90.0,
                 status: RtkStatus::Existing,
@@ -1594,7 +1600,7 @@ mod tests {
     fn test_rewrite_swift_test() {
         assert_eq!(
             rewrite_command("swift test --parallel", &[]),
-            Some("rtk swift test --parallel".into())
+            Some("crunch swift test --parallel".into())
         );
     }
 
@@ -1604,7 +1610,7 @@ mod tests {
     fn test_rewrite_docker_compose_ps() {
         assert_eq!(
             rewrite_command("docker compose ps", &[]),
-            Some("rtk docker compose ps".into())
+            Some("crunch docker compose ps".into())
         );
     }
 
@@ -1612,7 +1618,7 @@ mod tests {
     fn test_rewrite_docker_compose_logs() {
         assert_eq!(
             rewrite_command("docker compose logs web", &[]),
-            Some("rtk docker compose logs web".into())
+            Some("crunch docker compose logs web".into())
         );
     }
 
@@ -1620,7 +1626,7 @@ mod tests {
     fn test_rewrite_docker_compose_build() {
         assert_eq!(
             rewrite_command("docker compose build", &[]),
-            Some("rtk docker compose build".into())
+            Some("crunch docker compose build".into())
         );
     }
 
@@ -1649,7 +1655,7 @@ mod tests {
         assert!(matches!(
             classify_command("aws s3 ls"),
             Classification::Supported {
-                rtk_equivalent: "rtk aws",
+                rtk_equivalent: "crunch aws",
                 ..
             }
         ));
@@ -1660,7 +1666,7 @@ mod tests {
         assert!(matches!(
             classify_command("aws ec2 describe-instances"),
             Classification::Supported {
-                rtk_equivalent: "rtk aws",
+                rtk_equivalent: "crunch aws",
                 ..
             }
         ));
@@ -1671,7 +1677,7 @@ mod tests {
         assert!(matches!(
             classify_command("psql -U postgres"),
             Classification::Supported {
-                rtk_equivalent: "rtk psql",
+                rtk_equivalent: "crunch psql",
                 ..
             }
         ));
@@ -1682,7 +1688,7 @@ mod tests {
         assert!(matches!(
             classify_command("psql postgres://localhost/mydb"),
             Classification::Supported {
-                rtk_equivalent: "rtk psql",
+                rtk_equivalent: "crunch psql",
                 ..
             }
         ));
@@ -1692,7 +1698,7 @@ mod tests {
     fn test_rewrite_aws() {
         assert_eq!(
             rewrite_command("aws s3 ls", &[]),
-            Some("rtk aws s3 ls".into())
+            Some("crunch aws s3 ls".into())
         );
     }
 
@@ -1700,7 +1706,7 @@ mod tests {
     fn test_rewrite_aws_ec2() {
         assert_eq!(
             rewrite_command("aws ec2 describe-instances --region us-east-1", &[]),
-            Some("rtk aws ec2 describe-instances --region us-east-1".into())
+            Some("crunch aws ec2 describe-instances --region us-east-1".into())
         );
     }
 
@@ -1708,7 +1714,7 @@ mod tests {
     fn test_rewrite_psql() {
         assert_eq!(
             rewrite_command("psql -U postgres -d mydb", &[]),
-            Some("rtk psql -U postgres -d mydb".into())
+            Some("crunch psql -U postgres -d mydb".into())
         );
     }
 
@@ -1719,7 +1725,7 @@ mod tests {
         assert!(matches!(
             classify_command("ruff check ."),
             Classification::Supported {
-                rtk_equivalent: "rtk ruff",
+                rtk_equivalent: "crunch ruff",
                 ..
             }
         ));
@@ -1730,7 +1736,7 @@ mod tests {
         assert!(matches!(
             classify_command("ruff format src/"),
             Classification::Supported {
-                rtk_equivalent: "rtk ruff",
+                rtk_equivalent: "crunch ruff",
                 ..
             }
         ));
@@ -1741,7 +1747,7 @@ mod tests {
         assert!(matches!(
             classify_command("pytest tests/"),
             Classification::Supported {
-                rtk_equivalent: "rtk pytest",
+                rtk_equivalent: "crunch pytest",
                 ..
             }
         ));
@@ -1752,7 +1758,7 @@ mod tests {
         assert!(matches!(
             classify_command("python -m pytest tests/"),
             Classification::Supported {
-                rtk_equivalent: "rtk pytest",
+                rtk_equivalent: "crunch pytest",
                 ..
             }
         ));
@@ -1763,7 +1769,7 @@ mod tests {
         assert!(matches!(
             classify_command("pip list"),
             Classification::Supported {
-                rtk_equivalent: "rtk pip",
+                rtk_equivalent: "crunch pip",
                 ..
             }
         ));
@@ -1774,7 +1780,7 @@ mod tests {
         assert!(matches!(
             classify_command("uv pip list"),
             Classification::Supported {
-                rtk_equivalent: "rtk pip",
+                rtk_equivalent: "crunch pip",
                 ..
             }
         ));
@@ -1784,7 +1790,7 @@ mod tests {
     fn test_rewrite_ruff_check() {
         assert_eq!(
             rewrite_command("ruff check .", &[]),
-            Some("rtk ruff check .".into())
+            Some("crunch ruff check .".into())
         );
     }
 
@@ -1792,7 +1798,7 @@ mod tests {
     fn test_rewrite_ruff_format() {
         assert_eq!(
             rewrite_command("ruff format src/", &[]),
-            Some("rtk ruff format src/".into())
+            Some("crunch ruff format src/".into())
         );
     }
 
@@ -1800,7 +1806,7 @@ mod tests {
     fn test_rewrite_pytest() {
         assert_eq!(
             rewrite_command("pytest tests/", &[]),
-            Some("rtk pytest tests/".into())
+            Some("crunch pytest tests/".into())
         );
     }
 
@@ -1808,7 +1814,7 @@ mod tests {
     fn test_rewrite_python_m_pytest() {
         assert_eq!(
             rewrite_command("python -m pytest -x tests/", &[]),
-            Some("rtk pytest -x tests/".into())
+            Some("crunch pytest -x tests/".into())
         );
     }
 
@@ -1816,7 +1822,7 @@ mod tests {
     fn test_rewrite_pip_list() {
         assert_eq!(
             rewrite_command("pip list", &[]),
-            Some("rtk pip list".into())
+            Some("crunch pip list".into())
         );
     }
 
@@ -1824,7 +1830,7 @@ mod tests {
     fn test_rewrite_pip_outdated() {
         assert_eq!(
             rewrite_command("pip outdated", &[]),
-            Some("rtk pip outdated".into())
+            Some("crunch pip outdated".into())
         );
     }
 
@@ -1832,7 +1838,7 @@ mod tests {
     fn test_rewrite_uv_pip_list() {
         assert_eq!(
             rewrite_command("uv pip list", &[]),
-            Some("rtk pip list".into())
+            Some("crunch pip list".into())
         );
     }
 
@@ -1843,7 +1849,7 @@ mod tests {
         assert!(matches!(
             classify_command("go test ./..."),
             Classification::Supported {
-                rtk_equivalent: "rtk go",
+                rtk_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1854,7 +1860,7 @@ mod tests {
         assert!(matches!(
             classify_command("go build ./..."),
             Classification::Supported {
-                rtk_equivalent: "rtk go",
+                rtk_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1865,7 +1871,7 @@ mod tests {
         assert!(matches!(
             classify_command("go vet ./..."),
             Classification::Supported {
-                rtk_equivalent: "rtk go",
+                rtk_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1876,7 +1882,7 @@ mod tests {
         assert!(matches!(
             classify_command("golangci-lint run"),
             Classification::Supported {
-                rtk_equivalent: "rtk golangci-lint",
+                rtk_equivalent: "crunch golangci-lint",
                 ..
             }
         ));
@@ -1886,7 +1892,7 @@ mod tests {
     fn test_rewrite_go_test() {
         assert_eq!(
             rewrite_command("go test ./...", &[]),
-            Some("rtk go test ./...".into())
+            Some("crunch go test ./...".into())
         );
     }
 
@@ -1894,7 +1900,7 @@ mod tests {
     fn test_rewrite_go_build() {
         assert_eq!(
             rewrite_command("go build ./...", &[]),
-            Some("rtk go build ./...".into())
+            Some("crunch go build ./...".into())
         );
     }
 
@@ -1902,7 +1908,7 @@ mod tests {
     fn test_rewrite_go_vet() {
         assert_eq!(
             rewrite_command("go vet ./...", &[]),
-            Some("rtk go vet ./...".into())
+            Some("crunch go vet ./...".into())
         );
     }
 
@@ -1910,7 +1916,7 @@ mod tests {
     fn test_rewrite_golangci_lint() {
         assert_eq!(
             rewrite_command("golangci-lint run ./...", &[]),
-            Some("rtk golangci-lint run ./...".into())
+            Some("crunch golangci-lint run ./...".into())
         );
     }
 
@@ -1921,7 +1927,7 @@ mod tests {
         assert!(matches!(
             classify_command("vitest run"),
             Classification::Supported {
-                rtk_equivalent: "rtk vitest",
+                rtk_equivalent: "crunch vitest",
                 ..
             }
         ));
@@ -1931,7 +1937,7 @@ mod tests {
     fn test_rewrite_vitest() {
         assert_eq!(
             rewrite_command("vitest run", &[]),
-            Some("rtk vitest run".into())
+            Some("crunch vitest run".into())
         );
     }
 
@@ -1939,7 +1945,7 @@ mod tests {
     fn test_rewrite_pnpm_vitest() {
         assert_eq!(
             rewrite_command("pnpm vitest run", &[]),
-            Some("rtk vitest run".into())
+            Some("crunch vitest run".into())
         );
     }
 
@@ -1948,7 +1954,7 @@ mod tests {
         assert!(matches!(
             classify_command("npx prisma migrate dev"),
             Classification::Supported {
-                rtk_equivalent: "rtk prisma",
+                rtk_equivalent: "crunch prisma",
                 ..
             }
         ));
@@ -1958,7 +1964,7 @@ mod tests {
     fn test_rewrite_prisma() {
         assert_eq!(
             rewrite_command("npx prisma migrate dev", &[]),
-            Some("rtk prisma migrate dev".into())
+            Some("crunch prisma migrate dev".into())
         );
     }
 
@@ -1966,7 +1972,7 @@ mod tests {
     fn test_rewrite_prettier() {
         assert_eq!(
             rewrite_command("npx prettier --check src/", &[]),
-            Some("rtk prettier --check src/".into())
+            Some("crunch prettier --check src/".into())
         );
     }
 
@@ -1974,7 +1980,7 @@ mod tests {
     fn test_rewrite_pnpm_list() {
         assert_eq!(
             rewrite_command("pnpm list", &[]),
-            Some("rtk pnpm list".into())
+            Some("crunch pnpm list".into())
         );
     }
 
@@ -1985,7 +1991,7 @@ mod tests {
         // `||` fallback: left rewritten, right rewritten
         assert_eq!(
             rewrite_command("cargo test || cargo build", &[]),
-            Some("rtk cargo test || rtk cargo build".into())
+            Some("crunch cargo test || crunch cargo build".into())
         );
     }
 
@@ -1993,7 +1999,7 @@ mod tests {
     fn test_rewrite_compound_semicolon() {
         assert_eq!(
             rewrite_command("git status; cargo test", &[]),
-            Some("rtk git status; rtk cargo test".into())
+            Some("crunch git status; crunch cargo test".into())
         );
     }
 
@@ -2002,7 +2008,7 @@ mod tests {
         // Pipe: rewrite first segment only, pass through rest unchanged
         assert_eq!(
             rewrite_command("cargo test | grep FAILED", &[]),
-            Some("rtk cargo test | grep FAILED".into())
+            Some("crunch cargo test | grep FAILED".into())
         );
     }
 
@@ -2010,7 +2016,7 @@ mod tests {
     fn test_rewrite_compound_pipe_git_grep() {
         assert_eq!(
             rewrite_command("git log -10 | grep feat", &[]),
-            Some("rtk git log -10 | grep feat".into())
+            Some("crunch git log -10 | grep feat".into())
         );
     }
 
@@ -2022,7 +2028,7 @@ mod tests {
                 &[]
             ),
             Some(
-                "rtk cargo fmt --all && rtk cargo clippy && rtk cargo test && rtk git status"
+                "crunch cargo fmt --all && crunch cargo clippy && crunch cargo test && crunch git status"
                     .into()
             )
         );
@@ -2033,7 +2039,7 @@ mod tests {
         // unsupported segments stay raw
         assert_eq!(
             rewrite_command("cargo test && htop", &[]),
-            Some("rtk cargo test && htop".into())
+            Some("crunch cargo test && htop".into())
         );
     }
 
@@ -2049,7 +2055,7 @@ mod tests {
     fn test_rewrite_sudo_docker() {
         assert_eq!(
             rewrite_command("sudo docker ps", &[]),
-            Some("sudo rtk docker ps".into())
+            Some("sudo crunch docker ps".into())
         );
     }
 
@@ -2057,7 +2063,7 @@ mod tests {
     fn test_rewrite_env_var_prefix() {
         assert_eq!(
             rewrite_command("GIT_SSH_COMMAND=ssh git push origin main", &[]),
-            Some("GIT_SSH_COMMAND=ssh rtk git push origin main".into())
+            Some("GIT_SSH_COMMAND=ssh crunch git push origin main".into())
         );
     }
 
@@ -2067,7 +2073,7 @@ mod tests {
     fn test_rewrite_find_with_flags() {
         assert_eq!(
             rewrite_command("find . -name '*.rs' -type f", &[]),
-            Some("rtk find . -name '*.rs' -type f".into())
+            Some("crunch find . -name '*.rs' -type f".into())
         );
     }
 
@@ -2092,7 +2098,7 @@ mod tests {
         for rule in RULES {
             assert!(!rule.rtk_cmd.is_empty(), "Rule with empty rtk_cmd found");
             assert!(
-                rule.rtk_cmd.starts_with("rtk "),
+                rule.rtk_cmd.starts_with("crunch "),
                 "rtk_cmd '{}' must start with 'rtk '",
                 rule.rtk_cmd
             );
@@ -2120,7 +2126,7 @@ mod tests {
         let excluded = vec!["curl".to_string()];
         assert_eq!(
             rewrite_command("git status", &excluded),
-            Some("rtk git status".into())
+            Some("crunch git status".into())
         );
     }
 
@@ -2136,7 +2142,7 @@ mod tests {
         let excluded = vec!["curl".to_string()];
         assert_eq!(
             rewrite_command("git status && curl https://api.example.com", &excluded),
-            Some("rtk git status && curl https://api.example.com".into())
+            Some("crunch git status && curl https://api.example.com".into())
         );
     }
 
@@ -2188,32 +2194,34 @@ mod tests {
     fn test_rewrite_gh_without_json_still_works() {
         assert_eq!(
             rewrite_command("gh pr list", &[]),
-            Some("rtk gh pr list".into())
+            Some("crunch gh pr list".into())
         );
     }
 
-    // --- #508: RTK_DISABLED detection helpers ---
+    // --- #508: CRUNCH_DISABLED detection helpers ---
 
     #[test]
     fn test_has_rtk_disabled_prefix() {
-        assert!(has_rtk_disabled_prefix("RTK_DISABLED=1 git status"));
-        assert!(has_rtk_disabled_prefix("FOO=1 RTK_DISABLED=1 cargo test"));
+        assert!(has_rtk_disabled_prefix("CRUNCH_DISABLED=1 git status"));
         assert!(has_rtk_disabled_prefix(
-            "RTK_DISABLED=true git log --oneline"
+            "FOO=1 CRUNCH_DISABLED=1 cargo test"
+        ));
+        assert!(has_rtk_disabled_prefix(
+            "CRUNCH_DISABLED=true git log --oneline"
         ));
         assert!(!has_rtk_disabled_prefix("git status"));
-        assert!(!has_rtk_disabled_prefix("rtk git status"));
+        assert!(!has_rtk_disabled_prefix("crunch git status"));
         assert!(!has_rtk_disabled_prefix("SOME_VAR=1 git status"));
     }
 
     #[test]
     fn test_strip_disabled_prefix() {
         assert_eq!(
-            strip_disabled_prefix("RTK_DISABLED=1 git status"),
+            strip_disabled_prefix("CRUNCH_DISABLED=1 git status"),
             "git status"
         );
         assert_eq!(
-            strip_disabled_prefix("FOO=1 RTK_DISABLED=1 cargo test"),
+            strip_disabled_prefix("FOO=1 CRUNCH_DISABLED=1 cargo test"),
             "cargo test"
         );
         assert_eq!(strip_disabled_prefix("git status"), "git status");
@@ -2226,7 +2234,7 @@ mod tests {
         assert_eq!(
             classify_command("/usr/bin/grep -rni pattern"),
             Classification::Supported {
-                rtk_equivalent: "rtk grep",
+                rtk_equivalent: "crunch grep",
                 category: "Files",
                 estimated_savings_pct: 75.0,
                 status: RtkStatus::Existing,
@@ -2239,7 +2247,7 @@ mod tests {
         assert_eq!(
             classify_command("/bin/ls -la"),
             Classification::Supported {
-                rtk_equivalent: "rtk ls",
+                rtk_equivalent: "crunch ls",
                 category: "Files",
                 estimated_savings_pct: 65.0,
                 status: RtkStatus::Existing,
@@ -2252,7 +2260,7 @@ mod tests {
         assert_eq!(
             classify_command("/usr/local/bin/git status"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -2266,7 +2274,7 @@ mod tests {
         assert_eq!(
             classify_command("/usr/bin/find ."),
             Classification::Supported {
-                rtk_equivalent: "rtk find",
+                rtk_equivalent: "crunch find",
                 category: "Files",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -2289,7 +2297,7 @@ mod tests {
         assert_eq!(
             classify_command("git -C /tmp status"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -2302,7 +2310,7 @@ mod tests {
         assert_eq!(
             classify_command("git --no-pager log -5"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -2315,7 +2323,7 @@ mod tests {
         assert_eq!(
             classify_command("git --git-dir /tmp/.git status"),
             Classification::Supported {
-                rtk_equivalent: "rtk git",
+                rtk_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
                 status: RtkStatus::Existing,
@@ -2327,7 +2335,7 @@ mod tests {
     fn test_rewrite_git_dash_c() {
         assert_eq!(
             rewrite_command("git -C /tmp status", &[]),
-            Some("rtk git -C /tmp status".to_string())
+            Some("crunch git -C /tmp status".to_string())
         );
     }
 
@@ -2335,7 +2343,7 @@ mod tests {
     fn test_rewrite_git_no_pager() {
         assert_eq!(
             rewrite_command("git --no-pager log -5", &[]),
-            Some("rtk git --no-pager log -5".to_string())
+            Some("crunch git --no-pager log -5".to_string())
         );
     }
 

@@ -26,7 +26,7 @@ pub struct ExtractedCommand {
 ///
 /// Note: Cursor Agent transcripts use a text-only format without structured
 /// tool_use/tool_result blocks, so command extraction is not possible.
-/// Use `rtk gain` to track savings for Cursor sessions instead.
+/// Use `crunch gain` to track savings for Cursor sessions instead.
 pub trait SessionProvider {
     fn discover_sessions(
         &self,

@@ -7,22 +7,21 @@ use tempfile::NamedTempFile;
 use crate::integrity;
 
 // Embedded hook script (guards before set -euo pipefail)
-const REWRITE_HOOK: &str = include_str!("../hooks/rtk-rewrite.sh");
+const REWRITE_HOOK: &str = include_str!("../hooks/crunch-rewrite.sh");
 
 // Embedded Cursor hook script (preToolUse format)
-const CURSOR_REWRITE_HOOK: &str = include_str!("../hooks/cursor-rtk-rewrite.sh");
+const CURSOR_REWRITE_HOOK: &str = include_str!("../hooks/cursor-crunch-rewrite.sh");
 
 // Embedded OpenCode plugin (auto-rewrite)
-const OPENCODE_PLUGIN: &str = include_str!("../hooks/opencode-rtk.ts");
+const OPENCODE_PLUGIN: &str = include_str!("../hooks/opencode-crunch.ts");
 
-// Embedded slim RTK awareness instructions
-const RTK_SLIM: &str = include_str!("../hooks/rtk-awareness.md");
-const RTK_SLIM_CODEX: &str = include_str!("../hooks/rtk-awareness-codex.md");
+// Embedded slim Crunch awareness instructions
+const RTK_SLIM: &str = include_str!("../hooks/crunch-awareness.md");
+const RTK_SLIM_CODEX: &str = include_str!("../hooks/crunch-awareness-codex.md");
 
-/// Template written by `rtk init` when no filters.toml exists yet.
-const FILTERS_TEMPLATE: &str = r#"# Project-local RTK filters — commit this file with your repo.
+/// Template written by `crunch init` when no filters.toml exists yet.
+const FILTERS_TEMPLATE: &str = r#"# Project-local Crunch filters — commit this file with your repo.
 # Filters here override user-global and built-in filters.
-# Docs: https://github.com/rtk-ai/rtk#custom-filters
 schema_version = 1
 
 # Example: suppress build noise from a custom tool
@@ -35,10 +34,9 @@ schema_version = 1
 # on_empty = "my-tool: ok"
 "#;
 
-/// Template for user-global filters (~/.config/rtk/filters.toml).
-const FILTERS_GLOBAL_TEMPLATE: &str = r#"# User-global RTK filters — apply to all your projects.
-# Project-local .rtk/filters.toml takes precedence over these.
-# Docs: https://github.com/rtk-ai/rtk#custom-filters
+/// Template for user-global filters (~/.config/crunch/filters.toml).
+const FILTERS_GLOBAL_TEMPLATE: &str = r#"# User-global Crunch filters — apply to all your projects.
+# Project-local .crunch/filters.toml takes precedence over these.
 schema_version = 1
 
 # Example: suppress noise from a tool you use everywhere
@@ -68,122 +66,120 @@ pub enum PatchResult {
 }
 
 // Legacy full instructions for backward compatibility (--claude-md mode)
-const RTK_INSTRUCTIONS: &str = r##"<!-- rtk-instructions v2 -->
-# RTK (Rust Token Killer) - Token-Optimized Commands
+const RTK_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v2 -->
+# Crunch - Token-Optimized Commands
 
 ## Golden Rule
 
-**Always prefix commands with `rtk`**. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use.
+**Always prefix commands with `crunch`**. If Crunch has a dedicated filter, it uses it. If not, it passes through unchanged. This means Crunch is always safe to use.
 
-**Important**: Even in command chains with `&&`, use `rtk`:
+**Important**: Even in command chains with `&&`, use `crunch`:
 ```bash
-# ❌ Wrong
+# Wrong
 git add . && git commit -m "msg" && git push
 
-# ✅ Correct
-rtk git add . && rtk git commit -m "msg" && rtk git push
+# Correct
+crunch git add . && crunch git commit -m "msg" && crunch git push
 ```
 
-## RTK Commands by Workflow
+## Crunch Commands by Workflow
 
 ### Build & Compile (80-90% savings)
 ```bash
-rtk cargo build         # Cargo build output
-rtk cargo check         # Cargo check output
-rtk cargo clippy        # Clippy warnings grouped by file (80%)
-rtk tsc                 # TypeScript errors grouped by file/code (83%)
-rtk lint                # ESLint/Biome violations grouped (84%)
-rtk prettier --check    # Files needing format only (70%)
-rtk next build          # Next.js build with route metrics (87%)
+crunch cargo build         # Cargo build output
+crunch cargo check         # Cargo check output
+crunch cargo clippy        # Clippy warnings grouped by file (80%)
+crunch tsc                 # TypeScript errors grouped by file/code (83%)
+crunch lint                # ESLint/Biome violations grouped (84%)
+crunch prettier --check    # Files needing format only (70%)
+crunch next build          # Next.js build with route metrics (87%)
 ```
 
 ### Test (90-99% savings)
 ```bash
-rtk cargo test          # Cargo test failures only (90%)
-rtk vitest run          # Vitest failures only (99.5%)
-rtk playwright test     # Playwright failures only (94%)
-rtk test <cmd>          # Generic test wrapper - failures only
+crunch cargo test          # Cargo test failures only (90%)
+crunch vitest run          # Vitest failures only (99.5%)
+crunch playwright test     # Playwright failures only (94%)
+crunch test <cmd>          # Generic test wrapper - failures only
 ```
 
 ### Git (59-80% savings)
 ```bash
-rtk git status          # Compact status
-rtk git log             # Compact log (works with all git flags)
-rtk git diff            # Compact diff (80%)
-rtk git show            # Compact show (80%)
-rtk git add             # Ultra-compact confirmations (59%)
-rtk git commit          # Ultra-compact confirmations (59%)
-rtk git push            # Ultra-compact confirmations
-rtk git pull            # Ultra-compact confirmations
-rtk git branch          # Compact branch list
-rtk git fetch           # Compact fetch
-rtk git stash           # Compact stash
-rtk git worktree        # Compact worktree
+crunch git status          # Compact status
+crunch git log             # Compact log (works with all git flags)
+crunch git diff            # Compact diff (80%)
+crunch git show            # Compact show (80%)
+crunch git add             # Ultra-compact confirmations (59%)
+crunch git commit          # Ultra-compact confirmations (59%)
+crunch git push            # Ultra-compact confirmations
+crunch git pull            # Ultra-compact confirmations
+crunch git branch          # Compact branch list
+crunch git fetch           # Compact fetch
+crunch git stash           # Compact stash
+crunch git worktree        # Compact worktree
 ```
 
 Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
 
 ### GitHub (26-87% savings)
 ```bash
-rtk gh pr view <num>    # Compact PR view (87%)
-rtk gh pr checks        # Compact PR checks (79%)
-rtk gh run list         # Compact workflow runs (82%)
-rtk gh issue list       # Compact issue list (80%)
-rtk gh api              # Compact API responses (26%)
+crunch gh pr view <num>    # Compact PR view (87%)
+crunch gh pr checks        # Compact PR checks (79%)
+crunch gh run list         # Compact workflow runs (82%)
+crunch gh issue list       # Compact issue list (80%)
+crunch gh api              # Compact API responses (26%)
 ```
 
 ### JavaScript/TypeScript Tooling (70-90% savings)
 ```bash
-rtk pnpm list           # Compact dependency tree (70%)
-rtk pnpm outdated       # Compact outdated packages (80%)
-rtk pnpm install        # Compact install output (90%)
-rtk npm run <script>    # Compact npm script output
-rtk npx <cmd>           # Compact npx command output
-rtk prisma              # Prisma without ASCII art (88%)
+crunch pnpm list           # Compact dependency tree (70%)
+crunch pnpm outdated       # Compact outdated packages (80%)
+crunch pnpm install        # Compact install output (90%)
+crunch npm run <script>    # Compact npm script output
+crunch npx <cmd>           # Compact npx command output
+crunch prisma              # Prisma without ASCII art (88%)
 ```
 
 ### Files & Search (60-75% savings)
 ```bash
-rtk ls <path>           # Tree format, compact (65%)
-rtk read <file>         # Code reading with filtering (60%)
-rtk grep <pattern>      # Search grouped by file (75%)
-rtk find <pattern>      # Find grouped by directory (70%)
+crunch ls <path>           # Tree format, compact (65%)
+crunch read <file>         # Code reading with filtering (60%)
+crunch grep <pattern>      # Search grouped by file (75%)
+crunch find <pattern>      # Find grouped by directory (70%)
 ```
 
 ### Analysis & Debug (70-90% savings)
 ```bash
-rtk err <cmd>           # Filter errors only from any command
-rtk log <file>          # Deduplicated logs with counts
-rtk json <file>         # JSON structure without values
-rtk deps                # Dependency overview
-rtk env                 # Environment variables compact
-rtk summary <cmd>       # Smart summary of command output
-rtk diff                # Ultra-compact diffs
+crunch err <cmd>           # Filter errors only from any command
+crunch log <file>          # Deduplicated logs with counts
+crunch json <file>         # JSON structure without values
+crunch deps                # Dependency overview
+crunch env                 # Environment variables compact
+crunch summary <cmd>       # Smart summary of command output
+crunch diff                # Ultra-compact diffs
 ```
 
 ### Infrastructure (85% savings)
 ```bash
-rtk docker ps           # Compact container list
-rtk docker images       # Compact image list
-rtk docker logs <c>     # Deduplicated logs
-rtk kubectl get         # Compact resource list
-rtk kubectl logs        # Deduplicated pod logs
+crunch docker ps           # Compact container list
+crunch docker images       # Compact image list
+crunch docker logs <c>     # Deduplicated logs
+crunch kubectl get         # Compact resource list
+crunch kubectl logs        # Deduplicated pod logs
 ```
 
 ### Network (65-70% savings)
 ```bash
-rtk curl <url>          # Compact HTTP responses (70%)
-rtk wget <url>          # Compact download output (65%)
+crunch curl <url>          # Compact HTTP responses (70%)
+crunch wget <url>          # Compact download output (65%)
 ```
 
 ### Meta Commands
 ```bash
-rtk gain                # View token savings statistics
-rtk gain --history      # View command history with savings
-rtk discover            # Analyze Claude Code sessions for missed RTK usage
-rtk proxy <cmd>         # Run command without filtering (for debugging)
-rtk init                # Add RTK instructions to CLAUDE.md
-rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
+crunch discover            # Analyze Claude Code sessions for missed Crunch usage
+crunch proxy <cmd>         # Run command without filtering (for debugging)
+crunch init                # Add Crunch instructions to CLAUDE.md
+crunch init --global       # Add Crunch to ~/.claude/CLAUDE.md
 ```
 
 ## Token Savings Overview
@@ -200,10 +196,10 @@ rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
 | Network | curl, wget | 65-70% |
 
 Overall average: **60-90% token reduction** on common development operations.
-<!-- /rtk-instructions -->
+<!-- /crunch-instructions -->
 "##;
 
-/// Main entry point for `rtk init`
+/// Main entry point for `crunch init`
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     global: bool,
@@ -240,15 +236,15 @@ pub fn run(
 
     // Validation: Global-only features
     if install_opencode && !global {
-        anyhow::bail!("OpenCode plugin is global-only. Use: rtk init -g --opencode");
+        anyhow::bail!("OpenCode plugin is global-only. Use: crunch init -g --opencode");
     }
 
     if install_cursor && !global {
-        anyhow::bail!("Cursor hooks are global-only. Use: rtk init -g --agent cursor");
+        anyhow::bail!("Cursor hooks are global-only. Use: crunch init -g --agent cursor");
     }
 
     if install_windsurf && !global {
-        anyhow::bail!("Windsurf support is global-only. Use: rtk init -g --agent windsurf");
+        anyhow::bail!("Windsurf support is global-only. Use: crunch init -g --agent windsurf");
     }
 
     // Windsurf-only mode
@@ -279,10 +275,8 @@ pub fn run(
         install_cursor_hooks(verbose)?;
     }
 
-    // Telemetry notice (shown once during init)
+    // Init complete
     println!();
-    println!("  [info] Anonymous telemetry is enabled (opt-out: RTK_TELEMETRY_DISABLED=1)");
-    println!("  [info] See: https://github.com/rtk-ai/rtk#privacy--telemetry");
 
     Ok(())
 }
@@ -293,7 +287,7 @@ fn prepare_hook_paths() -> Result<(PathBuf, PathBuf)> {
     let hook_dir = claude_dir.join("hooks");
     fs::create_dir_all(&hook_dir)
         .with_context(|| format!("Failed to create hook directory: {}", hook_dir.display()))?;
-    let hook_path = hook_dir.join("rtk-rewrite.sh");
+    let hook_path = hook_dir.join("crunch-rewrite.sh");
     Ok((hook_dir, hook_path))
 }
 
@@ -445,7 +439,7 @@ fn print_manual_instructions(hook_path: &Path, include_opencode: bool) {
     }
 }
 
-/// Remove RTK hook entry from settings.json
+/// Remove Crunch hook entry from settings.json
 /// Returns true if hook was found and removed
 fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
     let hooks = match root.get_mut("hooks").and_then(|h| h.get_mut("PreToolUse")) {
@@ -458,13 +452,13 @@ fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
         None => return false,
     };
 
-    // Find and remove RTK entry
+    // Find and remove Crunch entry
     let original_len = pre_tool_use_array.len();
     pre_tool_use_array.retain(|entry| {
         if let Some(hooks_array) = entry.get("hooks").and_then(|h| h.as_array()) {
             for hook in hooks_array {
                 if let Some(command) = hook.get("command").and_then(|c| c.as_str()) {
-                    if command.contains("rtk-rewrite.sh") {
+                    if command.contains("crunch-rewrite.sh") {
                         return false; // Remove this entry
                     }
                 }
@@ -476,7 +470,7 @@ fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
     pre_tool_use_array.len() < original_len
 }
 
-/// Remove RTK hook from settings.json file
+/// Remove Crunch hook from settings.json file
 /// Backs up before modification, returns true if hook was found and removed
 fn remove_hook_from_settings(verbose: u8) -> Result<bool> {
     let claude_dir = resolve_claude_dir()?;
@@ -513,7 +507,7 @@ fn remove_hook_from_settings(verbose: u8) -> Result<bool> {
         atomic_write(&settings_path, &serialized)?;
 
         if verbose > 0 {
-            eprintln!("Removed RTK hook from settings.json");
+            eprintln!("Removed Crunch hook from settings.json");
         }
     }
 
@@ -533,19 +527,19 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
         let cursor_removed =
             remove_cursor_hooks(verbose).context("Failed to remove Cursor hooks")?;
         if !cursor_removed.is_empty() {
-            println!("RTK uninstalled (Cursor):");
+            println!("Crunch uninstalled (Cursor):");
             for item in &cursor_removed {
                 println!("  - {}", item);
             }
             println!("\nRestart Cursor to apply changes.");
         } else {
-            println!("RTK Cursor support was not installed (nothing to remove)");
+            println!("Crunch Cursor support was not installed (nothing to remove)");
         }
         return Ok(());
     }
 
     if !global {
-        anyhow::bail!("Uninstall only works with --global flag. For local projects, manually remove RTK from CLAUDE.md");
+        anyhow::bail!("Uninstall only works with --global flag. For local projects, manually remove Crunch from CLAUDE.md");
     }
 
     let claude_dir = resolve_claude_dir()?;
@@ -556,19 +550,19 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
         let gemini_removed = uninstall_gemini(verbose)?;
         removed.extend(gemini_removed);
         if !removed.is_empty() {
-            println!("RTK uninstalled (Gemini):");
+            println!("Crunch uninstalled (Gemini):");
             for item in &removed {
                 println!("  - {}", item);
             }
             println!("\nRestart Gemini CLI to apply changes.");
         } else {
-            println!("RTK Gemini support was not installed (nothing to remove)");
+            println!("Crunch Gemini support was not installed (nothing to remove)");
         }
         return Ok(());
     }
 
     // 1. Remove hook file
-    let hook_path = claude_dir.join("hooks").join("rtk-rewrite.sh");
+    let hook_path = claude_dir.join("hooks").join("crunch-rewrite.sh");
     if hook_path.exists() {
         fs::remove_file(&hook_path)
             .with_context(|| format!("Failed to remove hook: {}", hook_path.display()))?;
@@ -580,24 +574,24 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
         removed.push("Integrity hash: removed".to_string());
     }
 
-    // 2. Remove RTK.md
-    let rtk_md_path = claude_dir.join("RTK.md");
+    // 2. Remove CRUNCH.md
+    let rtk_md_path = claude_dir.join("CRUNCH.md");
     if rtk_md_path.exists() {
         fs::remove_file(&rtk_md_path)
-            .with_context(|| format!("Failed to remove RTK.md: {}", rtk_md_path.display()))?;
-        removed.push(format!("RTK.md: {}", rtk_md_path.display()));
+            .with_context(|| format!("Failed to remove CRUNCH.md: {}", rtk_md_path.display()))?;
+        removed.push(format!("CRUNCH.md: {}", rtk_md_path.display()));
     }
 
-    // 3. Remove @RTK.md reference from CLAUDE.md
+    // 3. Remove @CRUNCH.md reference from CLAUDE.md
     let claude_md_path = claude_dir.join("CLAUDE.md");
     if claude_md_path.exists() {
         let content = fs::read_to_string(&claude_md_path)
             .with_context(|| format!("Failed to read CLAUDE.md: {}", claude_md_path.display()))?;
 
-        if content.contains("@RTK.md") {
+        if content.contains("@CRUNCH.md") {
             let new_content = content
                 .lines()
-                .filter(|line| !line.trim().starts_with("@RTK.md"))
+                .filter(|line| !line.trim().starts_with("@CRUNCH.md"))
                 .collect::<Vec<_>>()
                 .join("\n");
 
@@ -607,13 +601,13 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
             fs::write(&claude_md_path, cleaned).with_context(|| {
                 format!("Failed to write CLAUDE.md: {}", claude_md_path.display())
             })?;
-            removed.push("CLAUDE.md: removed @RTK.md reference".to_string());
+            removed.push("CLAUDE.md: removed @CRUNCH.md reference".to_string());
         }
     }
 
     // 4. Remove hook entry from settings.json
     if remove_hook_from_settings(verbose)? {
-        removed.push("settings.json: removed RTK hook entry".to_string());
+        removed.push("settings.json: removed Crunch hook entry".to_string());
     }
 
     // 5. Remove OpenCode plugin
@@ -628,9 +622,9 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
 
     // Report results
     if removed.is_empty() {
-        println!("RTK was not installed (nothing to remove)");
+        println!("Crunch was not installed (nothing to remove)");
     } else {
-        println!("RTK uninstalled:");
+        println!("Crunch uninstalled:");
         for item in removed {
             println!("  - {}", item);
         }
@@ -643,7 +637,7 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
 fn uninstall_codex(global: bool, verbose: u8) -> Result<()> {
     if !global {
         anyhow::bail!(
-            "Uninstall only works with --global flag. For local projects, manually remove RTK from AGENTS.md"
+            "Uninstall only works with --global flag. For local projects, manually remove Crunch from AGENTS.md"
         );
     }
 
@@ -651,9 +645,9 @@ fn uninstall_codex(global: bool, verbose: u8) -> Result<()> {
     let removed = uninstall_codex_at(&codex_dir, verbose)?;
 
     if removed.is_empty() {
-        println!("RTK was not installed for Codex CLI (nothing to remove)");
+        println!("Crunch was not installed for Codex CLI (nothing to remove)");
     } else {
-        println!("RTK uninstalled for Codex CLI:");
+        println!("Crunch uninstalled for Codex CLI:");
         for item in removed {
             println!("  - {}", item);
         }
@@ -665,25 +659,25 @@ fn uninstall_codex(global: bool, verbose: u8) -> Result<()> {
 fn uninstall_codex_at(codex_dir: &Path, verbose: u8) -> Result<Vec<String>> {
     let mut removed = Vec::new();
 
-    let rtk_md_path = codex_dir.join("RTK.md");
+    let rtk_md_path = codex_dir.join("CRUNCH.md");
     if rtk_md_path.exists() {
         fs::remove_file(&rtk_md_path)
-            .with_context(|| format!("Failed to remove RTK.md: {}", rtk_md_path.display()))?;
+            .with_context(|| format!("Failed to remove CRUNCH.md: {}", rtk_md_path.display()))?;
         if verbose > 0 {
-            eprintln!("Removed RTK.md: {}", rtk_md_path.display());
+            eprintln!("Removed CRUNCH.md: {}", rtk_md_path.display());
         }
-        removed.push(format!("RTK.md: {}", rtk_md_path.display()));
+        removed.push(format!("CRUNCH.md: {}", rtk_md_path.display()));
     }
 
     let agents_md_path = codex_dir.join("AGENTS.md");
     if remove_rtk_reference_from_agents(&agents_md_path, verbose)? {
-        removed.push("AGENTS.md: removed @RTK.md reference".to_string());
+        removed.push("AGENTS.md: removed @CRUNCH.md reference".to_string());
     }
 
     Ok(removed)
 }
 
-/// Orchestrator: patch settings.json with RTK hook
+/// Orchestrator: patch settings.json with Crunch hook
 /// Handles reading, checking, prompting, merging, backing up, and atomic writing
 fn patch_settings_json(
     hook_path: &Path,
@@ -772,7 +766,7 @@ fn patch_settings_json(
 }
 
 /// Clean up consecutive blank lines (collapse 3+ to 2)
-/// Used when removing @RTK.md line from CLAUDE.md
+/// Used when removing @CRUNCH.md line from CLAUDE.md
 fn clean_double_blanks(content: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut result = Vec::new();
@@ -801,7 +795,7 @@ fn clean_double_blanks(content: &str) -> String {
     result.join("\n")
 }
 
-/// Deep-merge RTK hook entry into settings.json
+/// Deep-merge Crunch hook entry into settings.json
 /// Creates hooks.PreToolUse structure if missing, preserves existing hooks
 fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) {
     // Ensure root is an object
@@ -827,7 +821,7 @@ fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) {
         .as_array_mut()
         .expect("PreToolUse must be an array");
 
-    // Append RTK hook entry
+    // Append Crunch hook entry
     pre_tool_use.push(serde_json::json!({
         "matcher": "Bash",
         "hooks": [{
@@ -837,8 +831,8 @@ fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) {
     }));
 }
 
-/// Check if RTK hook is already present in settings.json
-/// Matches on rtk-rewrite.sh substring to handle different path formats
+/// Check if Crunch hook is already present in settings.json
+/// Matches on crunch-rewrite.sh substring to handle different path formats
 fn hook_already_present(root: &serde_json::Value, hook_command: &str) -> bool {
     let pre_tool_use_array = match root
         .get("hooks")
@@ -855,13 +849,13 @@ fn hook_already_present(root: &serde_json::Value, hook_command: &str) -> bool {
         .flatten()
         .filter_map(|hook| hook.get("command")?.as_str())
         .any(|cmd| {
-            // Exact match OR both contain rtk-rewrite.sh
+            // Exact match OR both contain crunch-rewrite.sh
             cmd == hook_command
-                || (cmd.contains("rtk-rewrite.sh") && hook_command.contains("rtk-rewrite.sh"))
+                || (cmd.contains("crunch-rewrite.sh") && hook_command.contains("crunch-rewrite.sh"))
         })
 }
 
-/// Default mode: hook + slim RTK.md + @RTK.md reference
+/// Default mode: hook + slim CRUNCH.md + @CRUNCH.md reference
 #[cfg(not(unix))]
 fn run_default_mode(
     _global: bool,
@@ -890,15 +884,15 @@ fn run_default_mode(
     }
 
     let claude_dir = resolve_claude_dir()?;
-    let rtk_md_path = claude_dir.join("RTK.md");
+    let rtk_md_path = claude_dir.join("CRUNCH.md");
     let claude_md_path = claude_dir.join("CLAUDE.md");
 
     // 1. Prepare hook directory and install hook
     let (_hook_dir, hook_path) = prepare_hook_paths()?;
     let hook_changed = ensure_hook_installed(&hook_path, verbose)?;
 
-    // 2. Write RTK.md
-    write_if_changed(&rtk_md_path, RTK_SLIM, "RTK.md", verbose)?;
+    // 2. Write CRUNCH.md
+    write_if_changed(&rtk_md_path, RTK_SLIM, "CRUNCH.md", verbose)?;
 
     let opencode_plugin_path = if install_opencode {
         let path = prepare_opencode_plugin_path()?;
@@ -908,7 +902,7 @@ fn run_default_mode(
         None
     };
 
-    // 3. Patch CLAUDE.md (add @RTK.md, migrate if needed)
+    // 3. Patch CLAUDE.md (add @CRUNCH.md, migrate if needed)
     let migrated = patch_claude_md(&claude_md_path, verbose)?;
 
     // 4. Print success message
@@ -917,17 +911,17 @@ fn run_default_mode(
     } else {
         "already up to date"
     };
-    println!("\nRTK hook {} (global).\n", hook_status);
+    println!("\nCrunch hook {} (global).\n", hook_status);
     println!("  Hook:      {}", hook_path.display());
-    println!("  RTK.md:    {} (10 lines)", rtk_md_path.display());
+    println!("  CRUNCH.md:    {} (10 lines)", rtk_md_path.display());
     if let Some(path) = &opencode_plugin_path {
         println!("  OpenCode:  {}", path.display());
     }
-    println!("  CLAUDE.md: @RTK.md reference added");
+    println!("  CLAUDE.md: @CRUNCH.md reference added");
 
     if migrated {
-        println!("\n  [ok] Migrated: removed 137-line RTK block from CLAUDE.md");
-        println!("              replaced with @RTK.md (10 lines)");
+        println!("\n  [ok] Migrated: removed 137-line Crunch block from CLAUDE.md");
+        println!("              replaced with @CRUNCH.md (10 lines)");
     }
 
     // 5. Patch settings.json
@@ -951,7 +945,7 @@ fn run_default_mode(
         }
     }
 
-    // 6. Generate user-global filters template (~/.config/rtk/filters.toml)
+    // 6. Generate user-global filters template (~/.config/crunch/filters.toml)
     generate_global_filters_template(verbose)?;
 
     println!(); // Final newline
@@ -959,20 +953,20 @@ fn run_default_mode(
     Ok(())
 }
 
-/// Generate .rtk/filters.toml template in the current directory if not present.
+/// Generate .crunch/filters.toml template in the current directory if not present.
 fn generate_project_filters_template(verbose: u8) -> Result<()> {
-    let rtk_dir = std::path::Path::new(".rtk");
-    let path = rtk_dir.join("filters.toml");
+    let crunch_dir = std::path::Path::new(".crunch");
+    let path = crunch_dir.join("filters.toml");
 
     if path.exists() {
         if verbose > 0 {
-            eprintln!(".rtk/filters.toml already exists, skipping template");
+            eprintln!(".crunch/filters.toml already exists, skipping template");
         }
         return Ok(());
     }
 
-    fs::create_dir_all(rtk_dir)
-        .with_context(|| format!("Failed to create directory: {}", rtk_dir.display()))?;
+    fs::create_dir_all(crunch_dir)
+        .with_context(|| format!("Failed to create directory: {}", crunch_dir.display()))?;
     fs::write(&path, FILTERS_TEMPLATE)
         .with_context(|| format!("Failed to write {}", path.display()))?;
 
@@ -983,11 +977,11 @@ fn generate_project_filters_template(verbose: u8) -> Result<()> {
     Ok(())
 }
 
-/// Generate ~/.config/rtk/filters.toml template if not present.
+/// Generate ~/.config/crunch/filters.toml template if not present.
 fn generate_global_filters_template(verbose: u8) -> Result<()> {
     let config_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from(".config"));
-    let rtk_dir = config_dir.join("rtk");
-    let path = rtk_dir.join("filters.toml");
+    let crunch_dir = config_dir.join("crunch");
+    let path = crunch_dir.join("filters.toml");
 
     if path.exists() {
         if verbose > 0 {
@@ -996,8 +990,8 @@ fn generate_global_filters_template(verbose: u8) -> Result<()> {
         return Ok(());
     }
 
-    fs::create_dir_all(&rtk_dir)
-        .with_context(|| format!("Failed to create directory: {}", rtk_dir.display()))?;
+    fs::create_dir_all(&crunch_dir)
+        .with_context(|| format!("Failed to create directory: {}", crunch_dir.display()))?;
     fs::write(&path, FILTERS_GLOBAL_TEMPLATE)
         .with_context(|| format!("Failed to write {}", path.display()))?;
 
@@ -1008,7 +1002,7 @@ fn generate_global_filters_template(verbose: u8) -> Result<()> {
     Ok(())
 }
 
-/// Hook-only mode: just the hook, no RTK.md
+/// Hook-only mode: just the hook, no CRUNCH.md
 #[cfg(not(unix))]
 fn run_hook_only_mode(
     _global: bool,
@@ -1049,13 +1043,13 @@ fn run_hook_only_mode(
     } else {
         "already up to date"
     };
-    println!("\nRTK hook {} (hook-only mode).\n", hook_status);
+    println!("\nCrunch hook {} (hook-only mode).\n", hook_status);
     println!("  Hook: {}", hook_path.display());
     if let Some(path) = &opencode_plugin_path {
         println!("  OpenCode: {}", path.display());
     }
     println!(
-        "  Note: No RTK.md created. Claude won't know about meta commands (gain, discover, proxy)."
+        "  Note: No CRUNCH.md created. Claude won't know about meta commands (gain, discover, proxy)."
     );
 
     // Patch settings.json
@@ -1099,7 +1093,7 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
     }
 
     if verbose > 0 {
-        eprintln!("Writing rtk instructions to: {}", path.display());
+        eprintln!("Writing crunch instructions to: {}", path.display());
     }
 
     if path.exists() {
@@ -1110,45 +1104,48 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
         match action {
             RtkBlockUpsert::Added => {
                 fs::write(&path, new_content)?;
-                println!("[ok] Added rtk instructions to existing {}", path.display());
+                println!(
+                    "[ok] Added crunch instructions to existing {}",
+                    path.display()
+                );
             }
             RtkBlockUpsert::Updated => {
                 fs::write(&path, new_content)?;
-                println!("[ok] Updated rtk instructions in {}", path.display());
+                println!("[ok] Updated crunch instructions in {}", path.display());
             }
             RtkBlockUpsert::Unchanged => {
                 println!(
-                    "[ok] {} already contains up-to-date rtk instructions",
+                    "[ok] {} already contains up-to-date crunch instructions",
                     path.display()
                 );
                 return Ok(());
             }
             RtkBlockUpsert::Malformed => {
                 eprintln!(
-                    "[warn] Warning: Found '<!-- rtk-instructions' without closing marker in {}",
+                    "[warn] Warning: Found '<!-- crunch-instructions' without closing marker in {}",
                     path.display()
                 );
 
                 if let Some((line_num, _)) = existing
                     .lines()
                     .enumerate()
-                    .find(|(_, line)| line.contains("<!-- rtk-instructions"))
+                    .find(|(_, line)| line.contains("<!-- crunch-instructions"))
                 {
                     eprintln!("    Location: line {}", line_num + 1);
                 }
 
                 eprintln!("    Action: Manually remove the incomplete block, then re-run:");
                 if global {
-                    eprintln!("            rtk init -g --claude-md");
+                    eprintln!("            crunch init -g --claude-md");
                 } else {
-                    eprintln!("            rtk init --claude-md");
+                    eprintln!("            crunch init --claude-md");
                 }
                 return Ok(());
             }
         }
     } else {
         fs::write(&path, RTK_INSTRUCTIONS)?;
-        println!("[ok] Created {} with rtk instructions", path.display());
+        println!("[ok] Created {} with crunch instructions", path.display());
     }
 
     if global {
@@ -1160,9 +1157,9 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
                 opencode_plugin_path.display()
             );
         }
-        println!("   Claude Code will now use rtk in all sessions");
+        println!("   Claude Code will now use crunch in all sessions");
     } else {
-        println!("   Claude Code will use rtk in this project");
+        println!("   Claude Code will use crunch in this project");
     }
 
     Ok(())
@@ -1170,11 +1167,11 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
 
 // ─── Windsurf support ─────────────────────────────────────────
 
-/// Embedded Windsurf RTK rules
-const WINDSURF_RULES: &str = include_str!("../hooks/windsurf-rtk-rules.md");
+/// Embedded Windsurf Crunch rules
+const WINDSURF_RULES: &str = include_str!("../hooks/windsurf-crunch-rules.md");
 
-/// Embedded Cline RTK rules
-const CLINE_RULES: &str = include_str!("../hooks/cline-rtk-rules.md");
+/// Embedded Cline Crunch rules
+const CLINE_RULES: &str = include_str!("../hooks/cline-crunch-rules.md");
 
 // ─── Cline / Roo Code support ─────────────────────────────────
 
@@ -1183,8 +1180,8 @@ fn run_cline_mode(verbose: u8) -> Result<()> {
     let rules_path = PathBuf::from(".clinerules");
 
     let existing = fs::read_to_string(&rules_path).unwrap_or_default();
-    if existing.contains("RTK") || existing.contains("rtk") {
-        println!("\nRTK already configured for Cline in this project.\n");
+    if existing.contains("Crunch") || existing.contains("crunch") {
+        println!("\nCrunch already configured for Cline in this project.\n");
         println!("  Rules: .clinerules (already present)");
     } else {
         let new_content = if existing.trim().is_empty() {
@@ -1198,10 +1195,10 @@ fn run_cline_mode(verbose: u8) -> Result<()> {
             eprintln!("Wrote .clinerules");
         }
 
-        println!("\nRTK configured for Cline.\n");
+        println!("\nCrunch configured for Cline.\n");
         println!("  Rules: .clinerules (installed)");
     }
-    println!("  Cline will now use rtk commands for token savings.");
+    println!("  Cline will now use crunch commands for token savings.");
     println!("  Test with: git status\n");
 
     Ok(())
@@ -1213,8 +1210,8 @@ fn run_windsurf_mode(verbose: u8) -> Result<()> {
     let rules_path = PathBuf::from(".windsurfrules");
 
     let existing = fs::read_to_string(&rules_path).unwrap_or_default();
-    if existing.contains("RTK") || existing.contains("rtk") {
-        println!("\nRTK already configured for Windsurf in this project.\n");
+    if existing.contains("Crunch") || existing.contains("crunch") {
+        println!("\nCrunch already configured for Windsurf in this project.\n");
         println!("  Rules: .windsurfrules (already present)");
     } else {
         let new_content = if existing.trim().is_empty() {
@@ -1228,10 +1225,10 @@ fn run_windsurf_mode(verbose: u8) -> Result<()> {
             eprintln!("Wrote .windsurfrules");
         }
 
-        println!("\nRTK configured for Windsurf Cascade.\n");
+        println!("\nCrunch configured for Windsurf Cascade.\n");
         println!("  Rules: .windsurfrules (installed)");
     }
-    println!("  Cascade will now use rtk commands for token savings.");
+    println!("  Cascade will now use crunch commands for token savings.");
     println!("  Restart Windsurf. Test with: git status\n");
 
     Ok(())
@@ -1240,9 +1237,9 @@ fn run_windsurf_mode(verbose: u8) -> Result<()> {
 fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
     let (agents_md_path, rtk_md_path) = if global {
         let codex_dir = resolve_codex_dir()?;
-        (codex_dir.join("AGENTS.md"), codex_dir.join("RTK.md"))
+        (codex_dir.join("AGENTS.md"), codex_dir.join("CRUNCH.md"))
     } else {
-        (PathBuf::from("AGENTS.md"), PathBuf::from("RTK.md"))
+        (PathBuf::from("AGENTS.md"), PathBuf::from("CRUNCH.md"))
     };
 
     if global {
@@ -1256,15 +1253,15 @@ fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
         }
     }
 
-    write_if_changed(&rtk_md_path, RTK_SLIM_CODEX, "RTK.md", verbose)?;
+    write_if_changed(&rtk_md_path, RTK_SLIM_CODEX, "CRUNCH.md", verbose)?;
     let added_ref = patch_agents_md(&agents_md_path, verbose)?;
 
-    println!("\nRTK configured for Codex CLI.\n");
-    println!("  RTK.md:    {}", rtk_md_path.display());
+    println!("\nCrunch configured for Codex CLI.\n");
+    println!("  CRUNCH.md:    {}", rtk_md_path.display());
     if added_ref {
-        println!("  AGENTS.md: @RTK.md reference added");
+        println!("  AGENTS.md: @CRUNCH.md reference added");
     } else {
-        println!("  AGENTS.md: @RTK.md reference already present");
+        println!("  AGENTS.md: @CRUNCH.md reference already present");
     }
     if global {
         println!(
@@ -1281,7 +1278,7 @@ fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
     Ok(())
 }
 
-// --- upsert_rtk_block: idempotent RTK block management ---
+// --- upsert_crunch_block: idempotent Crunch block management ---
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum RtkBlockUpsert {
@@ -1295,13 +1292,13 @@ enum RtkBlockUpsert {
     Malformed,
 }
 
-/// Insert or replace the RTK instructions block in `content`.
+/// Insert or replace the Crunch instructions block in `content`.
 ///
 /// Returns `(new_content, action)` describing what happened.
 /// The caller decides whether to write `new_content` based on `action`.
 fn upsert_rtk_block(content: &str, block: &str) -> (String, RtkBlockUpsert) {
-    let start_marker = "<!-- rtk-instructions";
-    let end_marker = "<!-- /rtk-instructions -->";
+    let start_marker = "<!-- crunch-instructions";
+    let end_marker = "<!-- /crunch-instructions -->";
 
     if let Some(start) = content.find(start_marker) {
         if let Some(relative_end) = content[start..].find(end_marker) {
@@ -1344,7 +1341,7 @@ fn upsert_rtk_block(content: &str, block: &str) -> (String, RtkBlockUpsert) {
     }
 }
 
-/// Patch CLAUDE.md: add @RTK.md, migrate if old block exists
+/// Patch CLAUDE.md: add @CRUNCH.md, migrate if old block exists
 fn patch_claude_md(path: &Path, verbose: u8) -> Result<bool> {
     let mut content = if path.exists() {
         fs::read_to_string(path)?
@@ -1355,21 +1352,21 @@ fn patch_claude_md(path: &Path, verbose: u8) -> Result<bool> {
     let mut migrated = false;
 
     // Check for old block and migrate
-    if content.contains("<!-- rtk-instructions") {
+    if content.contains("<!-- crunch-instructions") {
         let (new_content, did_migrate) = remove_rtk_block(&content);
         if did_migrate {
             content = new_content;
             migrated = true;
             if verbose > 0 {
-                eprintln!("Migrated: removed old RTK block from CLAUDE.md");
+                eprintln!("Migrated: removed old Crunch block from CLAUDE.md");
             }
         }
     }
 
-    // Check if @RTK.md already present
-    if content.contains("@RTK.md") {
+    // Check if @CRUNCH.md already present
+    if content.contains("@CRUNCH.md") {
         if verbose > 0 {
-            eprintln!("@RTK.md reference already present in CLAUDE.md");
+            eprintln!("@CRUNCH.md reference already present in CLAUDE.md");
         }
         if migrated {
             fs::write(path, content)?;
@@ -1377,23 +1374,23 @@ fn patch_claude_md(path: &Path, verbose: u8) -> Result<bool> {
         return Ok(migrated);
     }
 
-    // Add @RTK.md
+    // Add @CRUNCH.md
     let new_content = if content.is_empty() {
-        "@RTK.md\n".to_string()
+        "@CRUNCH.md\n".to_string()
     } else {
-        format!("{}\n\n@RTK.md\n", content.trim())
+        format!("{}\n\n@CRUNCH.md\n", content.trim())
     };
 
     fs::write(path, new_content)?;
 
     if verbose > 0 {
-        eprintln!("Added @RTK.md reference to CLAUDE.md");
+        eprintln!("Added @CRUNCH.md reference to CLAUDE.md");
     }
 
     Ok(migrated)
 }
 
-/// Patch AGENTS.md: add @RTK.md, migrate old inline block if present
+/// Patch AGENTS.md: add @CRUNCH.md, migrate old inline block if present
 fn patch_agents_md(path: &Path, verbose: u8) -> Result<bool> {
     let mut content = if path.exists() {
         fs::read_to_string(path)
@@ -1403,20 +1400,20 @@ fn patch_agents_md(path: &Path, verbose: u8) -> Result<bool> {
     };
 
     let mut migrated = false;
-    if content.contains("<!-- rtk-instructions") {
+    if content.contains("<!-- crunch-instructions") {
         let (new_content, did_migrate) = remove_rtk_block(&content);
         if did_migrate {
             content = new_content;
             migrated = true;
             if verbose > 0 {
-                eprintln!("Migrated: removed old RTK block from AGENTS.md");
+                eprintln!("Migrated: removed old Crunch block from AGENTS.md");
             }
         }
     }
 
-    if content.contains("@RTK.md") {
+    if content.contains("@CRUNCH.md") {
         if verbose > 0 {
-            eprintln!("@RTK.md reference already present in AGENTS.md");
+            eprintln!("@CRUNCH.md reference already present in AGENTS.md");
         }
         if migrated {
             atomic_write(path, &content)
@@ -1426,15 +1423,15 @@ fn patch_agents_md(path: &Path, verbose: u8) -> Result<bool> {
     }
 
     let new_content = if content.is_empty() {
-        "@RTK.md\n".to_string()
+        "@CRUNCH.md\n".to_string()
     } else {
-        format!("{}\n\n@RTK.md\n", content.trim())
+        format!("{}\n\n@CRUNCH.md\n", content.trim())
     };
 
     atomic_write(path, &new_content)
         .with_context(|| format!("Failed to write AGENTS.md: {}", path.display()))?;
     if verbose > 0 {
-        eprintln!("Added @RTK.md reference to AGENTS.md");
+        eprintln!("Added @CRUNCH.md reference to AGENTS.md");
     }
 
     Ok(true)
@@ -1447,13 +1444,13 @@ fn remove_rtk_reference_from_agents(path: &Path, verbose: u8) -> Result<bool> {
 
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read AGENTS.md: {}", path.display()))?;
-    if !content.contains("@RTK.md") {
+    if !content.contains("@CRUNCH.md") {
         return Ok(false);
     }
 
     let new_content = content
         .lines()
-        .filter(|line| !line.trim().starts_with("@RTK.md"))
+        .filter(|line| !line.trim().starts_with("@CRUNCH.md"))
         .collect::<Vec<_>>()
         .join("\n");
     let cleaned = clean_double_blanks(&new_content);
@@ -1462,7 +1459,7 @@ fn remove_rtk_reference_from_agents(path: &Path, verbose: u8) -> Result<bool> {
 
     if verbose > 0 {
         eprintln!(
-            "Removed @RTK.md reference from AGENTS.md: {}",
+            "Removed @CRUNCH.md reference from AGENTS.md: {}",
             path.display()
         );
     }
@@ -1470,13 +1467,13 @@ fn remove_rtk_reference_from_agents(path: &Path, verbose: u8) -> Result<bool> {
     Ok(true)
 }
 
-/// Remove old RTK block from CLAUDE.md (migration helper)
+/// Remove old Crunch block from CLAUDE.md (migration helper)
 fn remove_rtk_block(content: &str) -> (String, bool) {
     if let (Some(start), Some(end)) = (
-        content.find("<!-- rtk-instructions"),
-        content.find("<!-- /rtk-instructions -->"),
+        content.find("<!-- crunch-instructions"),
+        content.find("<!-- /crunch-instructions -->"),
     ) {
-        let end_pos = end + "<!-- /rtk-instructions -->".len();
+        let end_pos = end + "<!-- /crunch-instructions -->".len();
         let before = content[..start].trim_end();
         let after = content[end_pos..].trim_start();
 
@@ -1487,21 +1484,21 @@ fn remove_rtk_block(content: &str) -> (String, bool) {
         };
 
         (result, true) // migrated
-    } else if content.contains("<!-- rtk-instructions") {
-        eprintln!("[warn] Warning: Found '<!-- rtk-instructions' without closing marker.");
+    } else if content.contains("<!-- crunch-instructions") {
+        eprintln!("[warn] Warning: Found '<!-- crunch-instructions' without closing marker.");
         eprintln!("    This can happen if CLAUDE.md was manually edited.");
 
         // Find line number
         if let Some((line_num, _)) = content
             .lines()
             .enumerate()
-            .find(|(_, line)| line.contains("<!-- rtk-instructions"))
+            .find(|(_, line)| line.contains("<!-- crunch-instructions"))
         {
             eprintln!("    Location: line {}", line_num + 1);
         }
 
         eprintln!("    Action: Manually remove the incomplete block, then re-run:");
-        eprintln!("            rtk init -g");
+        eprintln!("            crunch init -g");
         (content.to_string(), false)
     } else {
         (content.to_string(), false)
@@ -1530,9 +1527,9 @@ fn resolve_opencode_dir() -> Result<PathBuf> {
         .context("Cannot determine home directory. Is $HOME set?")
 }
 
-/// Return OpenCode plugin path: ~/.config/opencode/plugins/rtk.ts
+/// Return OpenCode plugin path: ~/.config/opencode/plugins/crunch.ts
 fn opencode_plugin_path(opencode_dir: &Path) -> PathBuf {
-    opencode_dir.join("plugins").join("rtk.ts")
+    opencode_dir.join("plugins").join("crunch.ts")
 }
 
 /// Prepare OpenCode plugin directory and return install path
@@ -1594,7 +1591,7 @@ fn install_cursor_hooks(verbose: u8) -> Result<()> {
     })?;
 
     // 1. Write hook script
-    let hook_path = hooks_dir.join("rtk-rewrite.sh");
+    let hook_path = hooks_dir.join("crunch-rewrite.sh");
     let hook_changed = write_if_changed(&hook_path, CURSOR_REWRITE_HOOK, "Cursor hook", verbose)?;
 
     #[cfg(unix)]
@@ -1623,9 +1620,9 @@ fn install_cursor_hooks(verbose: u8) -> Result<()> {
     println!("  hooks.json: {}", hooks_json_path.display());
 
     if patched {
-        println!("  hooks.json: RTK preToolUse entry added");
+        println!("  hooks.json: Crunch preToolUse entry added");
     } else {
-        println!("  hooks.json: RTK preToolUse entry already present");
+        println!("  hooks.json: Crunch preToolUse entry already present");
     }
 
     println!("  Cursor reloads hooks.json automatically. Test with: git status\n");
@@ -1633,7 +1630,7 @@ fn install_cursor_hooks(verbose: u8) -> Result<()> {
     Ok(())
 }
 
-/// Patch ~/.cursor/hooks.json to add RTK preToolUse hook.
+/// Patch ~/.cursor/hooks.json to add Crunch preToolUse hook.
 /// Returns true if the file was modified.
 fn patch_cursor_hooks_json(path: &Path, verbose: u8) -> Result<bool> {
     let mut root = if path.exists() {
@@ -1652,12 +1649,12 @@ fn patch_cursor_hooks_json(path: &Path, verbose: u8) -> Result<bool> {
     // Check idempotency
     if cursor_hook_already_present(&root) {
         if verbose > 0 {
-            eprintln!("Cursor hooks.json: RTK hook already present");
+            eprintln!("Cursor hooks.json: Crunch hook already present");
         }
         return Ok(false);
     }
 
-    // Insert the RTK preToolUse entry
+    // Insert the Crunch preToolUse entry
     insert_cursor_hook_entry(&mut root);
 
     // Backup if exists
@@ -1678,7 +1675,7 @@ fn patch_cursor_hooks_json(path: &Path, verbose: u8) -> Result<bool> {
     Ok(true)
 }
 
-/// Check if RTK preToolUse hook is already present in Cursor hooks.json
+/// Check if Crunch preToolUse hook is already present in Cursor hooks.json
 fn cursor_hook_already_present(root: &serde_json::Value) -> bool {
     let hooks = match root
         .get("hooks")
@@ -1693,11 +1690,11 @@ fn cursor_hook_already_present(root: &serde_json::Value) -> bool {
         entry
             .get("command")
             .and_then(|c| c.as_str())
-            .is_some_and(|cmd| cmd.contains("rtk-rewrite.sh"))
+            .is_some_and(|cmd| cmd.contains("crunch-rewrite.sh"))
     })
 }
 
-/// Insert RTK preToolUse entry into Cursor hooks.json
+/// Insert Crunch preToolUse entry into Cursor hooks.json
 fn insert_cursor_hook_entry(root: &mut serde_json::Value) {
     let root_obj = match root.as_object_mut() {
         Some(obj) => obj,
@@ -1724,25 +1721,25 @@ fn insert_cursor_hook_entry(root: &mut serde_json::Value) {
         .expect("preToolUse must be an array");
 
     pre_tool_use.push(serde_json::json!({
-        "command": "./hooks/rtk-rewrite.sh",
+        "command": "./hooks/crunch-rewrite.sh",
         "matcher": "Shell"
     }));
 }
 
-/// Remove Cursor RTK artifacts: hook script + hooks.json entry
+/// Remove Cursor Crunch artifacts: hook script + hooks.json entry
 fn remove_cursor_hooks(verbose: u8) -> Result<Vec<String>> {
     let cursor_dir = resolve_cursor_dir()?;
     let mut removed = Vec::new();
 
     // 1. Remove hook script
-    let hook_path = cursor_dir.join("hooks").join("rtk-rewrite.sh");
+    let hook_path = cursor_dir.join("hooks").join("crunch-rewrite.sh");
     if hook_path.exists() {
         fs::remove_file(&hook_path)
             .with_context(|| format!("Failed to remove Cursor hook: {}", hook_path.display()))?;
         removed.push(format!("Cursor hook: {}", hook_path.display()));
     }
 
-    // 2. Remove RTK entry from hooks.json
+    // 2. Remove Crunch entry from hooks.json
     let hooks_json_path = cursor_dir.join("hooks.json");
     if hooks_json_path.exists() {
         let content = fs::read_to_string(&hooks_json_path)
@@ -1758,10 +1755,10 @@ fn remove_cursor_hooks(verbose: u8) -> Result<Vec<String>> {
                         .context("Failed to serialize hooks.json")?;
                     atomic_write(&hooks_json_path, &serialized)?;
 
-                    removed.push("Cursor hooks.json: removed RTK entry".to_string());
+                    removed.push("Cursor hooks.json: removed Crunch entry".to_string());
 
                     if verbose > 0 {
-                        eprintln!("Removed RTK hook from Cursor hooks.json");
+                        eprintln!("Removed Crunch hook from Cursor hooks.json");
                     }
                 }
             }
@@ -1771,7 +1768,7 @@ fn remove_cursor_hooks(verbose: u8) -> Result<Vec<String>> {
     Ok(removed)
 }
 
-/// Remove RTK preToolUse entry from Cursor hooks.json
+/// Remove Crunch preToolUse entry from Cursor hooks.json
 /// Returns true if entry was found and removed
 fn remove_cursor_hook_from_json(root: &mut serde_json::Value) -> bool {
     let pre_tool_use = match root
@@ -1788,13 +1785,13 @@ fn remove_cursor_hook_from_json(root: &mut serde_json::Value) -> bool {
         !entry
             .get("command")
             .and_then(|c| c.as_str())
-            .is_some_and(|cmd| cmd.contains("rtk-rewrite.sh"))
+            .is_some_and(|cmd| cmd.contains("crunch-rewrite.sh"))
     });
 
     pre_tool_use.len() < original_len
 }
 
-/// Show current rtk configuration
+/// Show current crunch configuration
 pub fn show_config(codex: bool) -> Result<()> {
     if codex {
         return show_codex_config();
@@ -1805,12 +1802,12 @@ pub fn show_config(codex: bool) -> Result<()> {
 
 fn show_claude_config() -> Result<()> {
     let claude_dir = resolve_claude_dir()?;
-    let hook_path = claude_dir.join("hooks").join("rtk-rewrite.sh");
-    let rtk_md_path = claude_dir.join("RTK.md");
+    let hook_path = claude_dir.join("hooks").join("crunch-rewrite.sh");
+    let rtk_md_path = claude_dir.join("CRUNCH.md");
     let global_claude_md = claude_dir.join("CLAUDE.md");
     let local_claude_md = PathBuf::from("CLAUDE.md");
 
-    println!("rtk Configuration:\n");
+    println!("crunch Configuration:\n");
 
     // Check hook
     if hook_path.exists() {
@@ -1822,9 +1819,9 @@ fn show_claude_config() -> Result<()> {
             let is_executable = perms.mode() & 0o111 != 0;
 
             let hook_content = fs::read_to_string(&hook_path)?;
-            let has_guards =
-                hook_content.contains("command -v rtk") && hook_content.contains("command -v jq");
-            let is_thin_delegator = hook_content.contains("rtk rewrite");
+            let has_guards = hook_content.contains("command -v crunch")
+                && hook_content.contains("command -v jq");
+            let is_thin_delegator = hook_content.contains("crunch rewrite");
             let hook_version = crate::hook_check::parse_hook_version(&hook_content);
 
             if !is_executable {
@@ -1838,7 +1835,7 @@ fn show_claude_config() -> Result<()> {
                     hook_path.display()
                 );
                 println!(
-                    "   → Run `rtk init --global` to upgrade to the single source of truth hook"
+                    "   → Run `crunch init --global` to upgrade to the single source of truth hook"
                 );
             } else if is_executable && has_guards {
                 println!(
@@ -1862,11 +1859,11 @@ fn show_claude_config() -> Result<()> {
         println!("[--] Hook: not found");
     }
 
-    // Check RTK.md
+    // Check CRUNCH.md
     if rtk_md_path.exists() {
-        println!("[ok] RTK.md: {} (slim mode)", rtk_md_path.display());
+        println!("[ok] CRUNCH.md: {} (slim mode)", rtk_md_path.display());
     } else {
-        println!("[--] RTK.md: not found");
+        println!("[--] CRUNCH.md: not found");
     }
 
     // Check hook integrity
@@ -1875,10 +1872,10 @@ fn show_claude_config() -> Result<()> {
             println!("[ok] Integrity: hook hash verified");
         }
         Ok(integrity::IntegrityStatus::Tampered { .. }) => {
-            println!("[FAIL] Integrity: hook modified outside rtk init (run: rtk verify)");
+            println!("[FAIL] Integrity: hook modified outside crunch init (run: crunch verify)");
         }
         Ok(integrity::IntegrityStatus::NoBaseline) => {
-            println!("[warn] Integrity: no baseline hash (run: rtk init -g to establish)");
+            println!("[warn] Integrity: no baseline hash (run: crunch init -g to establish)");
         }
         Ok(integrity::IntegrityStatus::NotInstalled)
         | Ok(integrity::IntegrityStatus::OrphanedHash) => {
@@ -1892,14 +1889,14 @@ fn show_claude_config() -> Result<()> {
     // Check global CLAUDE.md
     if global_claude_md.exists() {
         let content = fs::read_to_string(&global_claude_md)?;
-        if content.contains("@RTK.md") {
-            println!("[ok] Global (~/.claude/CLAUDE.md): @RTK.md reference");
-        } else if content.contains("<!-- rtk-instructions") {
+        if content.contains("@CRUNCH.md") {
+            println!("[ok] Global (~/.claude/CLAUDE.md): @CRUNCH.md reference");
+        } else if content.contains("<!-- crunch-instructions") {
             println!(
-                "[warn] Global (~/.claude/CLAUDE.md): old RTK block (run: rtk init -g to migrate)"
+                "[warn] Global (~/.claude/CLAUDE.md): old Crunch block (run: crunch init -g to migrate)"
             );
         } else {
-            println!("[--] Global (~/.claude/CLAUDE.md): exists but rtk not configured");
+            println!("[--] Global (~/.claude/CLAUDE.md): exists but crunch not configured");
         }
     } else {
         println!("[--] Global (~/.claude/CLAUDE.md): not found");
@@ -1908,10 +1905,10 @@ fn show_claude_config() -> Result<()> {
     // Check local CLAUDE.md
     if local_claude_md.exists() {
         let content = fs::read_to_string(&local_claude_md)?;
-        if content.contains("rtk") {
-            println!("[ok] Local (./CLAUDE.md): rtk enabled");
+        if content.contains("crunch") {
+            println!("[ok] Local (./CLAUDE.md): crunch enabled");
         } else {
-            println!("[--] Local (./CLAUDE.md): exists but rtk not configured");
+            println!("[--] Local (./CLAUDE.md): exists but crunch not configured");
         }
     } else {
         println!("[--] Local (./CLAUDE.md): not found");
@@ -1925,10 +1922,10 @@ fn show_claude_config() -> Result<()> {
             if let Ok(root) = serde_json::from_str::<serde_json::Value>(&content) {
                 let hook_command = hook_path.display().to_string();
                 if hook_already_present(&root, &hook_command) {
-                    println!("[ok] settings.json: RTK hook configured");
+                    println!("[ok] settings.json: Crunch hook configured");
                 } else {
-                    println!("[warn] settings.json: exists but RTK hook not configured");
-                    println!("    Run: rtk init -g --auto-patch");
+                    println!("[warn] settings.json: exists but Crunch hook not configured");
+                    println!("    Run: crunch init -g --auto-patch");
                 }
             } else {
                 println!("[warn] settings.json: exists but invalid JSON");
@@ -1954,7 +1951,7 @@ fn show_claude_config() -> Result<()> {
 
     // Check Cursor hooks
     if let Ok(cursor_dir) = resolve_cursor_dir() {
-        let cursor_hook = cursor_dir.join("hooks").join("rtk-rewrite.sh");
+        let cursor_hook = cursor_dir.join("hooks").join("crunch-rewrite.sh");
         let cursor_hooks_json = cursor_dir.join("hooks.json");
 
         if cursor_hook.exists() {
@@ -1964,7 +1961,7 @@ fn show_claude_config() -> Result<()> {
                 let meta = fs::metadata(&cursor_hook)?;
                 let is_executable = meta.permissions().mode() & 0o111 != 0;
                 let content = fs::read_to_string(&cursor_hook)?;
-                let is_thin = content.contains("rtk rewrite");
+                let is_thin = content.contains("crunch rewrite");
 
                 if !is_executable {
                     println!(
@@ -1978,7 +1975,7 @@ fn show_claude_config() -> Result<()> {
                     );
                 } else {
                     println!(
-                        "[warn] Cursor hook: {} (outdated - missing rtk rewrite delegation)",
+                        "[warn] Cursor hook: {} (outdated - missing crunch rewrite delegation)",
                         cursor_hook.display()
                     );
                 }
@@ -1997,10 +1994,10 @@ fn show_claude_config() -> Result<()> {
             if !content.trim().is_empty() {
                 if let Ok(root) = serde_json::from_str::<serde_json::Value>(&content) {
                     if cursor_hook_already_present(&root) {
-                        println!("[ok] Cursor hooks.json: RTK preToolUse configured");
+                        println!("[ok] Cursor hooks.json: Crunch preToolUse configured");
                     } else {
-                        println!("[warn] Cursor hooks.json: exists but RTK not configured");
-                        println!("    Run: rtk init -g --agent cursor");
+                        println!("[warn] Cursor hooks.json: exists but Crunch not configured");
+                        println!("    Run: crunch init -g --agent cursor");
                     }
                 } else {
                     println!("[warn] Cursor hooks.json: exists but invalid JSON");
@@ -2016,17 +2013,21 @@ fn show_claude_config() -> Result<()> {
     }
 
     println!("\nUsage:");
-    println!("  rtk init              # Full injection into local CLAUDE.md");
-    println!("  rtk init -g           # Hook + RTK.md + @RTK.md + settings.json (recommended)");
-    println!("  rtk init -g --auto-patch    # Same as above but no prompt");
-    println!("  rtk init -g --no-patch      # Skip settings.json (manual setup)");
-    println!("  rtk init -g --uninstall     # Remove all RTK artifacts");
-    println!("  rtk init -g --claude-md     # Legacy: full injection into ~/.claude/CLAUDE.md");
-    println!("  rtk init -g --hook-only     # Hook only, no RTK.md");
-    println!("  rtk init --codex            # Configure local AGENTS.md + RTK.md");
-    println!("  rtk init -g --codex         # Configure ~/.codex/AGENTS.md + ~/.codex/RTK.md");
-    println!("  rtk init -g --opencode      # OpenCode plugin only");
-    println!("  rtk init -g --agent cursor  # Install Cursor Agent hooks");
+    println!("  crunch init              # Full injection into local CLAUDE.md");
+    println!(
+        "  crunch init -g           # Hook + CRUNCH.md + @CRUNCH.md + settings.json (recommended)"
+    );
+    println!("  crunch init -g --auto-patch    # Same as above but no prompt");
+    println!("  crunch init -g --no-patch      # Skip settings.json (manual setup)");
+    println!("  crunch init -g --uninstall     # Remove all Crunch artifacts");
+    println!("  crunch init -g --claude-md     # Legacy: full injection into ~/.claude/CLAUDE.md");
+    println!("  crunch init -g --hook-only     # Hook only, no CRUNCH.md");
+    println!("  crunch init --codex            # Configure local AGENTS.md + CRUNCH.md");
+    println!(
+        "  crunch init -g --codex         # Configure ~/.codex/AGENTS.md + ~/.codex/CRUNCH.md"
+    );
+    println!("  crunch init -g --opencode      # OpenCode plugin only");
+    println!("  crunch init -g --agent cursor  # Install Cursor Agent hooks");
 
     Ok(())
 }
@@ -2034,54 +2035,56 @@ fn show_claude_config() -> Result<()> {
 fn show_codex_config() -> Result<()> {
     let codex_dir = resolve_codex_dir()?;
     let global_agents_md = codex_dir.join("AGENTS.md");
-    let global_rtk_md = codex_dir.join("RTK.md");
+    let global_rtk_md = codex_dir.join("CRUNCH.md");
     let local_agents_md = PathBuf::from("AGENTS.md");
-    let local_rtk_md = PathBuf::from("RTK.md");
+    let local_rtk_md = PathBuf::from("CRUNCH.md");
 
-    println!("rtk Configuration (Codex CLI):\n");
+    println!("crunch Configuration (Codex CLI):\n");
 
     if global_rtk_md.exists() {
-        println!("[ok] Global RTK.md: {}", global_rtk_md.display());
+        println!("[ok] Global CRUNCH.md: {}", global_rtk_md.display());
     } else {
-        println!("[--] Global RTK.md: not found");
+        println!("[--] Global CRUNCH.md: not found");
     }
 
     if global_agents_md.exists() {
         let content = fs::read_to_string(&global_agents_md)?;
-        if content.contains("@RTK.md") {
-            println!("[ok] Global AGENTS.md: @RTK.md reference");
-        } else if content.contains("<!-- rtk-instructions") {
-            println!("[!!] Global AGENTS.md: old inline RTK block");
+        if content.contains("@CRUNCH.md") {
+            println!("[ok] Global AGENTS.md: @CRUNCH.md reference");
+        } else if content.contains("<!-- crunch-instructions") {
+            println!("[!!] Global AGENTS.md: old inline Crunch block");
         } else {
-            println!("[--] Global AGENTS.md: exists but rtk not configured");
+            println!("[--] Global AGENTS.md: exists but crunch not configured");
         }
     } else {
         println!("[--] Global AGENTS.md: not found");
     }
 
     if local_rtk_md.exists() {
-        println!("[ok] Local RTK.md: {}", local_rtk_md.display());
+        println!("[ok] Local CRUNCH.md: {}", local_rtk_md.display());
     } else {
-        println!("[--] Local RTK.md: not found");
+        println!("[--] Local CRUNCH.md: not found");
     }
 
     if local_agents_md.exists() {
         let content = fs::read_to_string(&local_agents_md)?;
-        if content.contains("@RTK.md") {
-            println!("[ok] Local AGENTS.md: @RTK.md reference");
-        } else if content.contains("<!-- rtk-instructions") {
-            println!("[!!] Local AGENTS.md: old inline RTK block");
+        if content.contains("@CRUNCH.md") {
+            println!("[ok] Local AGENTS.md: @CRUNCH.md reference");
+        } else if content.contains("<!-- crunch-instructions") {
+            println!("[!!] Local AGENTS.md: old inline Crunch block");
         } else {
-            println!("[--] Local AGENTS.md: exists but rtk not configured");
+            println!("[--] Local AGENTS.md: exists but crunch not configured");
         }
     } else {
         println!("[--] Local AGENTS.md: not found");
     }
 
     println!("\nUsage:");
-    println!("  rtk init --codex              # Configure local AGENTS.md + RTK.md");
-    println!("  rtk init -g --codex           # Configure ~/.codex/AGENTS.md + ~/.codex/RTK.md");
-    println!("  rtk init -g --codex --uninstall  # Remove global Codex RTK artifacts");
+    println!("  crunch init --codex              # Configure local AGENTS.md + CRUNCH.md");
+    println!(
+        "  crunch init -g --codex           # Configure ~/.codex/AGENTS.md + ~/.codex/CRUNCH.md"
+    );
+    println!("  crunch init -g --codex --uninstall  # Remove global Codex Crunch artifacts");
 
     Ok(())
 }
@@ -2097,9 +2100,9 @@ fn run_opencode_only_mode(verbose: u8) -> Result<()> {
 
 // ─── Gemini CLI support ───────────────────────────────────────────
 
-/// Gemini hook wrapper script — delegates to `rtk hook gemini`
+/// Gemini hook wrapper script — delegates to `crunch hook gemini`
 const GEMINI_HOOK_SCRIPT: &str = r#"#!/bin/bash
-exec rtk hook gemini
+exec crunch hook gemini
 "#;
 
 /// Resolve the Gemini config directory (~/.gemini)
@@ -2108,10 +2111,10 @@ fn resolve_gemini_dir() -> Result<PathBuf> {
     Ok(home.join(".gemini"))
 }
 
-/// Entry point for `rtk init --gemini`
+/// Entry point for `crunch init --gemini`
 pub fn run_gemini(global: bool, hook_only: bool, patch_mode: PatchMode, verbose: u8) -> Result<()> {
     if !global {
-        anyhow::bail!("Gemini support is global-only. Use: rtk init -g --gemini");
+        anyhow::bail!("Gemini support is global-only. Use: crunch init -g --gemini");
     }
 
     let gemini_dir = resolve_gemini_dir()?;
@@ -2126,7 +2129,7 @@ pub fn run_gemini(global: bool, hook_only: bool, patch_mode: PatchMode, verbose:
     let hook_dir = gemini_dir.join("hooks");
     fs::create_dir_all(&hook_dir)
         .with_context(|| format!("Failed to create hook dir: {}", hook_dir.display()))?;
-    let hook_path = hook_dir.join("rtk-hook-gemini.sh");
+    let hook_path = hook_dir.join("crunch-hook-gemini.sh");
     write_if_changed(&hook_path, GEMINI_HOOK_SCRIPT, "Gemini hook", verbose)?;
 
     #[cfg(unix)]
@@ -2136,10 +2139,10 @@ pub fn run_gemini(global: bool, hook_only: bool, patch_mode: PatchMode, verbose:
             .with_context(|| format!("Failed to set hook permissions: {}", hook_path.display()))?;
     }
 
-    // 2. Install GEMINI.md (RTK awareness for Gemini)
+    // 2. Install GEMINI.md (Crunch awareness for Gemini)
     if !hook_only {
         let gemini_md_path = gemini_dir.join("GEMINI.md");
-        // Reuse the same slim RTK awareness content
+        // Reuse the same slim Crunch awareness content
         write_if_changed(&gemini_md_path, RTK_SLIM, "GEMINI.md", verbose)?;
     }
 
@@ -2180,10 +2183,10 @@ fn patch_gemini_settings(
             if arr.iter().any(|h| {
                 h.pointer("/hooks/0/command")
                     .and_then(|v| v.as_str())
-                    .is_some_and(|c| c.contains("rtk"))
+                    .is_some_and(|c| c.contains("crunch"))
             }) {
                 if verbose > 0 {
-                    eprintln!("Gemini settings.json already has RTK hook");
+                    eprintln!("Gemini settings.json already has Crunch hook");
                 }
                 return Ok(());
             }
@@ -2193,15 +2196,15 @@ fn patch_gemini_settings(
     // Ask user before patching
     if patch_mode == PatchMode::Skip {
         println!(
-            "\nManual setup needed: add RTK hook to {}\n\
-             See: https://github.com/rtk-ai/rtk#gemini-cli",
+            "\nManual setup needed: add Crunch hook to {}\n\
+             See: ",
             settings_path.display()
         );
         return Ok(());
     }
 
     if patch_mode == PatchMode::Ask {
-        print!("Patch {} with RTK hook? [y/N] ", settings_path.display());
+        print!("Patch {} with Crunch hook? [y/N] ", settings_path.display());
         std::io::Write::flush(&mut std::io::stdout())?;
         let mut answer = String::new();
         std::io::stdin().read_line(&mut answer)?;
@@ -2261,7 +2264,7 @@ fn uninstall_gemini(verbose: u8) -> Result<Vec<String>> {
     };
 
     // Remove hook
-    let hook_path = gemini_dir.join("hooks").join("rtk-hook-gemini.sh");
+    let hook_path = gemini_dir.join("hooks").join("crunch-hook-gemini.sh");
     if hook_path.exists() {
         fs::remove_file(&hook_path)
             .with_context(|| format!("Failed to remove {}", hook_path.display()))?;
@@ -2289,12 +2292,12 @@ fn uninstall_gemini(verbose: u8) -> Result<Vec<String>> {
                 arr.retain(|h| {
                     !h.pointer("/hooks/0/command")
                         .and_then(|v| v.as_str())
-                        .is_some_and(|c| c.contains("rtk"))
+                        .is_some_and(|c| c.contains("crunch"))
                 });
                 if arr.len() < before {
                     let new_content = serde_json::to_string_pretty(&settings)?;
                     fs::write(&settings_path, new_content)?;
-                    removed.push("Gemini settings.json: removed RTK hook entry".to_string());
+                    removed.push("Gemini settings.json: removed Crunch hook entry".to_string());
                 }
             }
         }
@@ -2314,7 +2317,7 @@ const COPILOT_HOOK_JSON: &str = r#"{
     "PreToolUse": [
       {
         "type": "command",
-        "command": "rtk hook copilot",
+        "command": "crunch hook copilot",
         "cwd": ".",
         "timeout": 5
       }
@@ -2323,34 +2326,34 @@ const COPILOT_HOOK_JSON: &str = r#"{
 }
 "#;
 
-const COPILOT_INSTRUCTIONS: &str = r#"# RTK — Token-Optimized CLI
+const COPILOT_INSTRUCTIONS: &str = r#"# Crunch — Token-Optimized CLI
 
-**rtk** is a CLI proxy that filters and compresses command outputs, saving 60-90% tokens.
+**crunch** is a CLI proxy that filters and compresses command outputs, saving 60-90% tokens.
 
 ## Rule
 
-Always prefix shell commands with `rtk`:
+Always prefix shell commands with `crunch`:
 
 ```bash
 # Instead of:              Use:
-git status                 rtk git status
-git log -10                rtk git log -10
-cargo test                 rtk cargo test
-docker ps                  rtk docker ps
-kubectl get pods           rtk kubectl pods
+git status                 crunch git status
+git log -10                crunch git log -10
+cargo test                 crunch cargo test
+docker ps                  crunch docker ps
+kubectl get pods           crunch kubectl pods
 ```
 
 ## Meta commands (use directly)
 
 ```bash
-rtk gain              # Token savings dashboard
-rtk gain --history    # Per-command savings history
-rtk discover          # Find missed rtk opportunities
-rtk proxy <cmd>       # Run raw (no filtering) but track usage
+crunch gain              # Token savings dashboard
+crunch gain --history    # Per-command savings history
+crunch discover          # Find missed crunch opportunities
+crunch proxy <cmd>       # Run raw (no filtering) but track usage
 ```
 "#;
 
-/// Entry point for `rtk init --copilot`
+/// Entry point for `crunch init --copilot`
 pub fn run_copilot(verbose: u8) -> Result<()> {
     // Install in current project's .github/ directory
     let github_dir = Path::new(".github");
@@ -2359,7 +2362,7 @@ pub fn run_copilot(verbose: u8) -> Result<()> {
     fs::create_dir_all(&hooks_dir).context("Failed to create .github/hooks/ directory")?;
 
     // 1. Write hook config
-    let hook_path = hooks_dir.join("rtk-rewrite.json");
+    let hook_path = hooks_dir.join("crunch-rewrite.json");
     write_if_changed(
         &hook_path,
         COPILOT_HOOK_JSON,
@@ -2394,21 +2397,21 @@ mod tests {
     #[test]
     fn test_init_mentions_all_top_level_commands() {
         for cmd in [
-            "rtk cargo",
-            "rtk gh",
-            "rtk vitest",
-            "rtk tsc",
-            "rtk lint",
-            "rtk prettier",
-            "rtk next",
-            "rtk playwright",
-            "rtk prisma",
-            "rtk pnpm",
-            "rtk npm",
-            "rtk curl",
-            "rtk git",
-            "rtk docker",
-            "rtk kubectl",
+            "crunch cargo",
+            "crunch gh",
+            "crunch vitest",
+            "crunch tsc",
+            "crunch lint",
+            "crunch prettier",
+            "crunch next",
+            "crunch playwright",
+            "crunch prisma",
+            "crunch pnpm",
+            "crunch npm",
+            "crunch curl",
+            "crunch git",
+            "crunch docker",
+            "crunch kubectl",
         ] {
             assert!(
                 RTK_INSTRUCTIONS.contains(cmd),
@@ -2420,22 +2423,22 @@ mod tests {
     #[test]
     fn test_init_has_version_marker() {
         assert!(
-            RTK_INSTRUCTIONS.contains("<!-- rtk-instructions"),
+            RTK_INSTRUCTIONS.contains("<!-- crunch-instructions"),
             "RTK_INSTRUCTIONS must have version marker for idempotency"
         );
     }
 
     #[test]
     fn test_hook_has_guards() {
-        assert!(REWRITE_HOOK.contains("command -v rtk"));
+        assert!(REWRITE_HOOK.contains("command -v crunch"));
         assert!(REWRITE_HOOK.contains("command -v jq"));
-        // Guards (rtk/jq availability checks) must appear before the actual delegation call.
+        // Guards (crunch/jq availability checks) must appear before the actual delegation call.
         // The thin delegating hook no longer uses set -euo pipefail.
         let jq_pos = REWRITE_HOOK.find("command -v jq").unwrap();
-        let rtk_delegate_pos = REWRITE_HOOK.find("rtk rewrite \"$CMD\"").unwrap();
+        let rtk_delegate_pos = REWRITE_HOOK.find("crunch rewrite \"$CMD\"").unwrap();
         assert!(
             jq_pos < rtk_delegate_pos,
-            "Guards must appear before rtk rewrite delegation"
+            "Guards must appear before crunch rewrite delegation"
         );
     }
 
@@ -2443,15 +2446,15 @@ mod tests {
     fn test_migration_removes_old_block() {
         let input = r#"# My Config
 
-<!-- rtk-instructions v2 -->
-OLD RTK STUFF
-<!-- /rtk-instructions -->
+<!-- crunch-instructions v2 -->
+OLD CRUNCH STUFF
+<!-- /crunch-instructions -->
 
 More content"#;
 
         let (result, migrated) = remove_rtk_block(input);
         assert!(migrated);
-        assert!(!result.contains("OLD RTK STUFF"));
+        assert!(!result.contains("OLD CRUNCH STUFF"));
         assert!(result.contains("# My Config"));
         assert!(result.contains("More content"));
     }
@@ -2492,7 +2495,7 @@ More content"#;
 
     #[test]
     fn test_migration_warns_on_missing_end_marker() {
-        let input = "<!-- rtk-instructions v2 -->\nOLD STUFF\nNo end marker";
+        let input = "<!-- crunch-instructions v2 -->\nOLD STUFF\nNo end marker";
         let (result, migrated) = remove_rtk_block(input);
         assert!(!migrated);
         assert_eq!(result, input);
@@ -2502,8 +2505,8 @@ More content"#;
     #[cfg(unix)]
     fn test_default_mode_creates_hook_and_rtk_md() {
         let temp = TempDir::new().unwrap();
-        let hook_path = temp.path().join("rtk-rewrite.sh");
-        let rtk_md_path = temp.path().join("RTK.md");
+        let hook_path = temp.path().join("crunch-rewrite.sh");
+        let rtk_md_path = temp.path().join("CRUNCH.md");
 
         fs::write(&hook_path, REWRITE_HOOK).unwrap();
         fs::write(&rtk_md_path, RTK_SLIM).unwrap();
@@ -2521,9 +2524,9 @@ More content"#;
     #[test]
     fn test_claude_md_mode_creates_full_injection() {
         // Just verify RTK_INSTRUCTIONS constant has the right content
-        assert!(RTK_INSTRUCTIONS.contains("<!-- rtk-instructions"));
-        assert!(RTK_INSTRUCTIONS.contains("rtk cargo test"));
-        assert!(RTK_INSTRUCTIONS.contains("<!-- /rtk-instructions -->"));
+        assert!(RTK_INSTRUCTIONS.contains("<!-- crunch-instructions"));
+        assert!(RTK_INSTRUCTIONS.contains("crunch cargo test"));
+        assert!(RTK_INSTRUCTIONS.contains("<!-- /crunch-instructions -->"));
         assert!(RTK_INSTRUCTIONS.len() > 4000);
     }
 
@@ -2535,24 +2538,24 @@ More content"#;
         let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Added);
         assert!(content.contains("# Team instructions"));
-        assert!(content.contains("<!-- rtk-instructions"));
+        assert!(content.contains("<!-- crunch-instructions"));
     }
 
     #[test]
     fn test_upsert_rtk_block_updates_stale_block() {
         let input = r#"# Team instructions
 
-<!-- rtk-instructions v1 -->
-OLD RTK CONTENT
-<!-- /rtk-instructions -->
+<!-- crunch-instructions v1 -->
+OLD CRUNCH CONTENT
+<!-- /crunch-instructions -->
 
 More notes
 "#;
 
         let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Updated);
-        assert!(!content.contains("OLD RTK CONTENT"));
-        assert!(content.contains("rtk cargo test")); // from current RTK_INSTRUCTIONS
+        assert!(!content.contains("OLD CRUNCH CONTENT"));
+        assert!(content.contains("crunch cargo test")); // from current RTK_INSTRUCTIONS
         assert!(content.contains("# Team instructions"));
         assert!(content.contains("More notes"));
     }
@@ -2570,7 +2573,7 @@ More notes
 
     #[test]
     fn test_upsert_rtk_block_detects_malformed_block() {
-        let input = "<!-- rtk-instructions v2 -->\npartial";
+        let input = "<!-- crunch-instructions v2 -->\npartial";
         let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Malformed);
         assert_eq!(content, input);
@@ -2581,10 +2584,10 @@ More notes
         let temp = TempDir::new().unwrap();
         let claude_md = temp.path().join("CLAUDE.md");
 
-        fs::write(&claude_md, "# My stuff\n\n@RTK.md\n").unwrap();
+        fs::write(&claude_md, "# My stuff\n\n@CRUNCH.md\n").unwrap();
 
         let content = fs::read_to_string(&claude_md).unwrap();
-        let count = content.matches("@RTK.md").count();
+        let count = content.matches("@CRUNCH.md").count();
         assert_eq!(count, 1);
     }
 
@@ -2601,7 +2604,7 @@ More notes
         assert!(!second_added);
 
         let content = fs::read_to_string(&agents_md).unwrap();
-        assert_eq!(content.matches("@RTK.md").count(), 1);
+        assert_eq!(content.matches("@CRUNCH.md").count(), 1);
     }
 
     #[test]
@@ -2657,7 +2660,7 @@ More notes
 
         assert!(added);
         let content = fs::read_to_string(&agents_md).unwrap();
-        assert_eq!(content, "@RTK.md\n");
+        assert_eq!(content, "@CRUNCH.md\n");
     }
 
     #[test]
@@ -2666,7 +2669,7 @@ More notes
         let agents_md = temp.path().join("AGENTS.md");
         fs::write(
             &agents_md,
-            "# Team rules\n\n<!-- rtk-instructions v2 -->\nold\n<!-- /rtk-instructions -->\n",
+            "# Team rules\n\n<!-- crunch-instructions v2 -->\nold\n<!-- /crunch-instructions -->\n",
         )
         .unwrap();
 
@@ -2675,7 +2678,7 @@ More notes
         assert!(added);
         let content = fs::read_to_string(&agents_md).unwrap();
         assert!(!content.contains("old"));
-        assert_eq!(content.matches("@RTK.md").count(), 1);
+        assert_eq!(content.matches("@CRUNCH.md").count(), 1);
     }
 
     #[test]
@@ -2683,9 +2686,9 @@ More notes
         let temp = TempDir::new().unwrap();
         let codex_dir = temp.path();
         let agents_md = codex_dir.join("AGENTS.md");
-        let rtk_md = codex_dir.join("RTK.md");
+        let rtk_md = codex_dir.join("CRUNCH.md");
 
-        fs::write(&agents_md, "# Team rules\n\n@RTK.md\n").unwrap();
+        fs::write(&agents_md, "# Team rules\n\n@CRUNCH.md\n").unwrap();
         fs::write(&rtk_md, "codex config").unwrap();
 
         let removed_first = uninstall_codex_at(codex_dir, 0).unwrap();
@@ -2696,7 +2699,7 @@ More notes
         assert!(!rtk_md.exists());
 
         let content = fs::read_to_string(&agents_md).unwrap();
-        assert!(!content.contains("@RTK.md"));
+        assert!(!content.contains("@CRUNCH.md"));
         assert!(content.contains("# Team rules"));
     }
 
@@ -2709,7 +2712,7 @@ More notes
         fs::write(&claude_md, RTK_INSTRUCTIONS).unwrap();
         let content = fs::read_to_string(&claude_md).unwrap();
 
-        assert!(content.contains("<!-- rtk-instructions"));
+        assert!(content.contains("<!-- crunch-instructions"));
     }
 
     // Tests for hook_already_present()
@@ -2721,13 +2724,13 @@ More notes
                     "matcher": "Bash",
                     "hooks": [{
                         "type": "command",
-                        "command": "/Users/test/.claude/hooks/rtk-rewrite.sh"
+                        "command": "/Users/test/.claude/hooks/crunch-rewrite.sh"
                     }]
                 }]
             }
         });
 
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
         assert!(hook_already_present(&json_content, hook_command));
     }
 
@@ -2739,21 +2742,21 @@ More notes
                     "matcher": "Bash",
                     "hooks": [{
                         "type": "command",
-                        "command": "/home/user/.claude/hooks/rtk-rewrite.sh"
+                        "command": "/home/user/.claude/hooks/crunch-rewrite.sh"
                     }]
                 }]
             }
         });
 
-        let hook_command = "~/.claude/hooks/rtk-rewrite.sh";
-        // Should match on rtk-rewrite.sh substring
+        let hook_command = "~/.claude/hooks/crunch-rewrite.sh";
+        // Should match on crunch-rewrite.sh substring
         assert!(hook_already_present(&json_content, hook_command));
     }
 
     #[test]
     fn test_hook_not_present_empty() {
         let json_content = serde_json::json!({});
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
         assert!(!hook_already_present(&json_content, hook_command));
     }
 
@@ -2771,7 +2774,7 @@ More notes
             }
         });
 
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
         assert!(!hook_already_present(&json_content, hook_command));
     }
 
@@ -2779,7 +2782,7 @@ More notes
     #[test]
     fn test_insert_hook_entry_empty_root() {
         let mut json_content = serde_json::json!({});
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
 
         insert_hook_entry(&mut json_content, hook_command);
 
@@ -2812,7 +2815,7 @@ More notes
             }
         });
 
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
         insert_hook_entry(&mut json_content, hook_command);
 
         let pre_tool_use = json_content["hooks"]["PreToolUse"].as_array().unwrap();
@@ -2822,7 +2825,7 @@ More notes
         let first_command = pre_tool_use[0]["hooks"][0]["command"].as_str().unwrap();
         assert_eq!(first_command, "/some/other/hook.sh");
 
-        // Check second hook is RTK
+        // Check second hook is Crunch
         let second_command = pre_tool_use[1]["hooks"][0]["command"].as_str().unwrap();
         assert_eq!(second_command, hook_command);
     }
@@ -2835,7 +2838,7 @@ More notes
             "model": "claude-sonnet-4"
         });
 
-        let hook_command = "/Users/test/.claude/hooks/rtk-rewrite.sh";
+        let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
         insert_hook_entry(&mut json_content, hook_command);
 
         // Should preserve all other keys
@@ -2915,7 +2918,7 @@ More notes
                         "matcher": "Bash",
                         "hooks": [{
                             "type": "command",
-                            "command": "/Users/test/.claude/hooks/rtk-rewrite.sh"
+                            "command": "/Users/test/.claude/hooks/crunch-rewrite.sh"
                         }]
                     }
                 ]
@@ -2960,7 +2963,7 @@ More notes
             "version": 1,
             "hooks": {
                 "preToolUse": [{
-                    "command": "./hooks/rtk-rewrite.sh",
+                    "command": "./hooks/crunch-rewrite.sh",
                     "matcher": "Shell"
                 }]
             }
@@ -2995,7 +2998,7 @@ More notes
 
         let hooks = json_content["hooks"]["preToolUse"].as_array().unwrap();
         assert_eq!(hooks.len(), 1);
-        assert_eq!(hooks[0]["command"], "./hooks/rtk-rewrite.sh");
+        assert_eq!(hooks[0]["command"], "./hooks/crunch-rewrite.sh");
         assert_eq!(hooks[0]["matcher"], "Shell");
         assert_eq!(json_content["version"], 1);
     }
@@ -3020,7 +3023,7 @@ More notes
         let pre_tool_use = json_content["hooks"]["preToolUse"].as_array().unwrap();
         assert_eq!(pre_tool_use.len(), 2);
         assert_eq!(pre_tool_use[0]["command"], "./hooks/other.sh");
-        assert_eq!(pre_tool_use[1]["command"], "./hooks/rtk-rewrite.sh");
+        assert_eq!(pre_tool_use[1]["command"], "./hooks/crunch-rewrite.sh");
 
         // afterFileEdit should be preserved
         assert!(json_content["hooks"]["afterFileEdit"].is_array());
@@ -3033,7 +3036,7 @@ More notes
             "hooks": {
                 "preToolUse": [
                     { "command": "./hooks/other.sh", "matcher": "Shell" },
-                    { "command": "./hooks/rtk-rewrite.sh", "matcher": "Shell" }
+                    { "command": "./hooks/crunch-rewrite.sh", "matcher": "Shell" }
                 ]
             }
         });
@@ -3063,13 +3066,13 @@ More notes
 
     #[test]
     fn test_cursor_hook_script_has_guards() {
-        assert!(CURSOR_REWRITE_HOOK.contains("command -v rtk"));
+        assert!(CURSOR_REWRITE_HOOK.contains("command -v crunch"));
         assert!(CURSOR_REWRITE_HOOK.contains("command -v jq"));
         let jq_pos = CURSOR_REWRITE_HOOK.find("command -v jq").unwrap();
-        let rtk_delegate_pos = CURSOR_REWRITE_HOOK.find("rtk rewrite \"$CMD\"").unwrap();
+        let rtk_delegate_pos = CURSOR_REWRITE_HOOK.find("crunch rewrite \"$CMD\"").unwrap();
         assert!(
             jq_pos < rtk_delegate_pos,
-            "Guards must appear before rtk rewrite delegation"
+            "Guards must appear before crunch rewrite delegation"
         );
     }
 

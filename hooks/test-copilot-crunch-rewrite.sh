@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test suite for rtk hook (cross-platform preToolUse handler).
-# Feeds mock preToolUse JSON through `rtk hook` and verifies allow/deny decisions.
+# Test suite for crunch hook (cross-platform preToolUse handler).
+# Feeds mock preToolUse JSON through `crunch hook` and verifies allow/deny decisions.
 #
-# Usage: bash hooks/test-copilot-rtk-rewrite.sh
+# Usage: bash hooks/test-copilot-crunch-rewrite.sh
 #
 # Copilot CLI input format:
 #   {"toolName":"bash","toolArgs":"{\"command\":\"...\"}"}
@@ -14,7 +14,7 @@
 #
 # Output on pass-through: empty (exit 0)
 
-RTK="${RTK:-rtk}"
+CRUNCH="${CRUNCH:-crunch}"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -45,26 +45,26 @@ tool_input() {
   jq -cn --arg t "$tool_name" '{"toolName":$t,"toolArgs":"{}"}'
 }
 
-# Assert Copilot CLI: hook denies and reason contains the expected rtk command
+# Assert Copilot CLI: hook denies and reason contains the expected crunch command
 test_deny() {
   local description="$1"
   local input_cmd="$2"
-  local expected_rtk="$3"
+  local expected_crunch="$3"
   TOTAL=$((TOTAL + 1))
 
   local output
-  output=$(copilot_bash_input "$input_cmd" | "$RTK" hook 2>/dev/null) || true
+  output=$(copilot_bash_input "$input_cmd" | "$CRUNCH" hook 2>/dev/null) || true
 
   local decision reason
   decision=$(echo "$output" | jq -r '.permissionDecision // empty' 2>/dev/null)
   reason=$(echo "$output" | jq -r '.permissionDecisionReason // empty' 2>/dev/null)
 
-  if [ "$decision" = "deny" ] && echo "$reason" | grep -qF "$expected_rtk"; then
-    printf "  ${GREEN}DENY${RESET} %s ${DIM}→ %s${RESET}\n" "$description" "$expected_rtk"
+  if [ "$decision" = "deny" ] && echo "$reason" | grep -qF "$expected_crunch"; then
+    printf "  ${GREEN}DENY${RESET} %s ${DIM}→ %s${RESET}\n" "$description" "$expected_crunch"
     PASS=$((PASS + 1))
   else
     printf "  ${RED}FAIL${RESET} %s\n" "$description"
-    printf "       expected decision: deny, reason containing: %s\n" "$expected_rtk"
+    printf "       expected decision: deny, reason containing: %s\n" "$expected_crunch"
     printf "       actual decision:   %s\n" "$decision"
     printf "       actual reason:     %s\n" "$reason"
     FAIL=$((FAIL + 1))
@@ -75,22 +75,22 @@ test_deny() {
 test_vscode_rewrite() {
   local description="$1"
   local input_cmd="$2"
-  local expected_rtk="$3"
+  local expected_crunch="$3"
   TOTAL=$((TOTAL + 1))
 
   local output
-  output=$(vscode_bash_input "$input_cmd" | "$RTK" hook 2>/dev/null) || true
+  output=$(vscode_bash_input "$input_cmd" | "$CRUNCH" hook 2>/dev/null) || true
 
   local decision updated_cmd
   decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
   updated_cmd=$(echo "$output" | jq -r '.hookSpecificOutput.updatedInput.command // empty' 2>/dev/null)
 
-  if [ "$decision" = "allow" ] && echo "$updated_cmd" | grep -qF "$expected_rtk"; then
+  if [ "$decision" = "allow" ] && echo "$updated_cmd" | grep -qF "$expected_crunch"; then
     printf "  ${GREEN}REWRITE${RESET} %s ${DIM}→ %s${RESET}\n" "$description" "$updated_cmd"
     PASS=$((PASS + 1))
   else
     printf "  ${RED}FAIL${RESET} %s\n" "$description"
-    printf "       expected decision: allow, updatedInput containing: %s\n" "$expected_rtk"
+    printf "       expected decision: allow, updatedInput containing: %s\n" "$expected_crunch"
     printf "       actual decision:   %s\n" "$decision"
     printf "       actual updatedInput: %s\n" "$updated_cmd"
     FAIL=$((FAIL + 1))
@@ -104,7 +104,7 @@ test_allow() {
   TOTAL=$((TOTAL + 1))
 
   local output
-  output=$(echo "$input" | "$RTK" hook 2>/dev/null) || true
+  output=$(echo "$input" | "$CRUNCH" hook 2>/dev/null) || true
 
   if [ -z "$output" ]; then
     printf "  ${GREEN}PASS${RESET} %s ${DIM}→ (allow)${RESET}\n" "$description"
@@ -120,44 +120,44 @@ test_allow() {
 }
 
 echo "============================================"
-echo "  RTK Hook Test Suite (rtk hook)"
+echo "  Crunch Hook Test Suite (crunch hook)"
 echo "============================================"
 echo ""
 
 # ---- SECTION 1: Copilot CLI — commands that should be denied ----
-echo "--- Copilot CLI: intercepted (deny with rtk suggestion) ---"
+echo "--- Copilot CLI: intercepted (deny with crunch suggestion) ---"
 
 test_deny "git status" \
   "git status" \
-  "rtk git status"
+  "crunch git status"
 
 test_deny "git log --oneline -10" \
   "git log --oneline -10" \
-  "rtk git log"
+  "crunch git log"
 
 test_deny "git diff HEAD" \
   "git diff HEAD" \
-  "rtk git diff"
+  "crunch git diff"
 
 test_deny "cargo test" \
   "cargo test" \
-  "rtk cargo test"
+  "crunch cargo test"
 
 test_deny "cargo clippy --all-targets" \
   "cargo clippy --all-targets" \
-  "rtk cargo clippy"
+  "crunch cargo clippy"
 
 test_deny "cargo build" \
   "cargo build" \
-  "rtk cargo build"
+  "crunch cargo build"
 
 test_deny "grep -rn pattern src/" \
   "grep -rn pattern src/" \
-  "rtk grep"
+  "crunch grep"
 
 test_deny "gh pr list" \
   "gh pr list" \
-  "rtk gh"
+  "crunch gh"
 
 echo ""
 
@@ -166,26 +166,26 @@ echo "--- VS Code Copilot Chat: intercepted (updatedInput rewrite) ---"
 
 test_vscode_rewrite "git status" \
   "git status" \
-  "rtk git status"
+  "crunch git status"
 
 test_vscode_rewrite "cargo test" \
   "cargo test" \
-  "rtk cargo test"
+  "crunch cargo test"
 
 test_vscode_rewrite "gh pr list" \
   "gh pr list" \
-  "rtk gh"
+  "crunch gh"
 
 echo ""
 
 # ---- SECTION 3: Pass-through cases ----
 echo "--- Pass-through (allow silently) ---"
 
-test_allow "Copilot CLI: already rtk: rtk git status" \
-  "$(copilot_bash_input "rtk git status")"
+test_allow "Copilot CLI: already crunch: crunch git status" \
+  "$(copilot_bash_input "crunch git status")"
 
-test_allow "Copilot CLI: already rtk: rtk cargo test" \
-  "$(copilot_bash_input "rtk cargo test")"
+test_allow "Copilot CLI: already crunch: crunch cargo test" \
+  "$(copilot_bash_input "crunch cargo test")"
 
 test_allow "Copilot CLI: heredoc" \
   "$(copilot_bash_input "cat <<'EOF'
@@ -204,8 +204,8 @@ test_allow "Copilot CLI: non-bash tool: view" \
 test_allow "Copilot CLI: non-bash tool: edit" \
   "$(tool_input "edit")"
 
-test_allow "VS Code: already rtk" \
-  "$(vscode_bash_input "rtk git status")"
+test_allow "VS Code: already crunch" \
+  "$(vscode_bash_input "crunch git status")"
 
 test_allow "VS Code: non-bash tool: editFiles" \
   "$(jq -cn '{"tool_name":"editFiles"}')"
@@ -217,7 +217,7 @@ echo "--- Output format ---"
 
 # Copilot CLI output format
 TOTAL=$((TOTAL + 1))
-raw_output=$(copilot_bash_input "git status" | "$RTK" hook 2>/dev/null)
+raw_output=$(copilot_bash_input "git status" | "$CRUNCH" hook 2>/dev/null)
 
 if echo "$raw_output" | jq . >/dev/null 2>&1; then
   printf "  ${GREEN}PASS${RESET} Copilot CLI: output is valid JSON\n"
@@ -239,8 +239,8 @@ fi
 
 TOTAL=$((TOTAL + 1))
 reason=$(echo "$raw_output" | jq -r '.permissionDecisionReason')
-if echo "$reason" | grep -qE '`rtk [^`]+`'; then
-  printf "  ${GREEN}PASS${RESET} Copilot CLI: reason contains backtick-quoted rtk command ${DIM}→ %s${RESET}\n" "$reason"
+if echo "$reason" | grep -qE '`crunch [^`]+`'; then
+  printf "  ${GREEN}PASS${RESET} Copilot CLI: reason contains backtick-quoted crunch command ${DIM}→ %s${RESET}\n" "$reason"
   PASS=$((PASS + 1))
 else
   printf "  ${RED}FAIL${RESET} Copilot CLI: reason missing backtick-quoted command: %s\n" "$reason"
@@ -249,7 +249,7 @@ fi
 
 # VS Code output format
 TOTAL=$((TOTAL + 1))
-vscode_output=$(vscode_bash_input "git status" | "$RTK" hook 2>/dev/null)
+vscode_output=$(vscode_bash_input "git status" | "$CRUNCH" hook 2>/dev/null)
 
 if echo "$vscode_output" | jq . >/dev/null 2>&1; then
   printf "  ${GREEN}PASS${RESET} VS Code: output is valid JSON\n"
@@ -271,11 +271,11 @@ fi
 
 TOTAL=$((TOTAL + 1))
 vscode_updated=$(echo "$vscode_output" | jq -r '.hookSpecificOutput.updatedInput.command')
-if echo "$vscode_updated" | grep -q "^rtk "; then
-  printf "  ${GREEN}PASS${RESET} VS Code: updatedInput.command starts with rtk ${DIM}→ %s${RESET}\n" "$vscode_updated"
+if echo "$vscode_updated" | grep -q "^crunch "; then
+  printf "  ${GREEN}PASS${RESET} VS Code: updatedInput.command starts with crunch ${DIM}→ %s${RESET}\n" "$vscode_updated"
   PASS=$((PASS + 1))
 else
-  printf "  ${RED}FAIL${RESET} VS Code: updatedInput.command should start with rtk: %s\n" "$vscode_updated"
+  printf "  ${RED}FAIL${RESET} VS Code: updatedInput.command should start with crunch: %s\n" "$vscode_updated"
   FAIL=$((FAIL + 1))
 fi
 

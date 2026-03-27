@@ -256,8 +256,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_rewritten_already_rtk() {
-        assert!(get_rewritten("rtk git status").is_none());
+    fn test_get_rewritten_already_crunch() {
+        assert!(get_rewritten("crunch git status").is_none());
     }
 
     #[test]
@@ -280,7 +280,7 @@ mod tests {
             "decision": "allow",
             "hookSpecificOutput": {
                 "tool_input": {
-                    "command": "rtk git status"
+                    "command": "crunch git status"
                 }
             }
         });
@@ -288,7 +288,7 @@ mod tests {
         assert_eq!(json["decision"], "allow");
         assert_eq!(
             json["hookSpecificOutput"]["tool_input"]["command"],
-            "rtk git status"
+            "crunch git status"
         );
     }
 
@@ -297,16 +297,16 @@ mod tests {
         // Verify that rewrite_command handles the cases we need for Gemini
         assert_eq!(
             rewrite_command("git status", &[]),
-            Some("rtk git status".into())
+            Some("crunch git status".into())
         );
         assert_eq!(
             rewrite_command("cargo test", &[]),
-            Some("rtk cargo test".into())
+            Some("crunch cargo test".into())
         );
-        // Already rtk → returned as-is (idempotent)
+        // Already crunch → returned as-is (idempotent)
         assert_eq!(
-            rewrite_command("rtk git status", &[]),
-            Some("rtk git status".into())
+            rewrite_command("crunch git status", &[]),
+            Some("crunch git status".into())
         );
         // Heredoc → no rewrite
         assert_eq!(rewrite_command("cat <<EOF", &[]), None);
@@ -319,7 +319,7 @@ mod tests {
         // Non-excluded still rewrites
         assert_eq!(
             rewrite_command("git status", &excluded),
-            Some("rtk git status".into())
+            Some("crunch git status".into())
         );
     }
 
@@ -327,7 +327,7 @@ mod tests {
     fn test_gemini_hook_env_prefix_preserved() {
         assert_eq!(
             rewrite_command("RUST_LOG=debug cargo test", &[]),
-            Some("RUST_LOG=debug rtk cargo test".into())
+            Some("RUST_LOG=debug crunch cargo test".into())
         );
     }
 }

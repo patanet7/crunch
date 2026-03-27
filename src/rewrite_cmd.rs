@@ -2,15 +2,15 @@ use crate::discover::registry;
 use crate::permissions::{check_command, PermissionVerdict};
 use std::io::Write;
 
-/// Run the `rtk rewrite` command.
+/// Run the `crunch rewrite` command.
 ///
-/// Prints the RTK-rewritten command to stdout and exits with a code that tells
+/// Prints the Crunch-rewritten command to stdout and exits with a code that tells
 /// the caller how to handle permissions:
 ///
 /// | Exit | Stdout   | Meaning                                                      |
 /// |------|----------|--------------------------------------------------------------|
 /// | 0    | rewritten| Rewrite allowed — hook may auto-allow the rewritten command. |
-/// | 1    | (none)   | No RTK equivalent — hook passes through unchanged.           |
+/// | 1    | (none)   | No Crunch equivalent — hook passes through unchanged.           |
 /// | 2    | (none)   | Deny rule matched — hook defers to Claude Code native deny.  |
 /// | 3    | rewritten| Ask rule matched — hook rewrites but lets Claude Code prompt.|
 pub fn run(cmd: &str) -> anyhow::Result<()> {
@@ -40,7 +40,7 @@ pub fn run(cmd: &str) -> anyhow::Result<()> {
             PermissionVerdict::Deny => unreachable!(),
         },
         None => {
-            // No RTK equivalent. Exit 1 = passthrough.
+            // No Crunch equivalent. Exit 1 = passthrough.
             // Claude Code independently evaluates its own ask rules on the original cmd.
             std::process::exit(1);
         }
@@ -64,8 +64,8 @@ mod tests {
     #[test]
     fn test_run_already_rtk_returns_some() {
         assert_eq!(
-            registry::rewrite_command("rtk git status", &[]),
-            Some("rtk git status".into())
+            registry::rewrite_command("crunch git status", &[]),
+            Some("crunch git status".into())
         );
     }
 }
