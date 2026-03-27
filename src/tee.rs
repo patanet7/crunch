@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// Minimum output size to tee (smaller outputs don't need recovery)
 const MIN_TEE_SIZE: usize = 500;
@@ -88,6 +89,13 @@ pub fn detect_project_name() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+static CACHED_PROJECT: OnceLock<String> = OnceLock::new();
+
+/// Get the project name, detecting only once per process.
+pub fn cached_project_name() -> &'static str {
+    CACHED_PROJECT.get_or_init(|| detect_project_name())
+}
+
 /// Derive scope from command args. Falls back to "all".
 pub fn detect_scope(args: &[String]) -> String {
     for arg in args {
@@ -142,7 +150,7 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
         return None;
     }
 
-    let project = detect_project_name();
+    let project = cached_project_name();
     let scope = detect_scope(args);
     let log_path = build_log_path(&project, tool, &scope);
 
@@ -379,6 +387,13 @@ pytest = { enabled = true }
     fn test_detect_project_name() {
         let name = detect_project_name();
         assert!(!name.is_empty());
+    }
+
+    #[test]
+    fn test_cached_project_name_consistent() {
+        let n1 = cached_project_name();
+        let n2 = cached_project_name();
+        assert_eq!(n1, n2);
     }
 
     #[test]
