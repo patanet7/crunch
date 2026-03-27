@@ -56,7 +56,11 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
         raw.trim().to_string()
     };
 
-    println!("{}", filtered);
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(raw, "ruff", args, exit_code) {
+        println!("{}\n{}", filtered, hint);
+    } else {
+        println!("{}", filtered);
+    }
 
     timer.track(
         &format!("ruff {}", args.join(" ")),
@@ -428,6 +432,48 @@ Would reformat: tests/test_utils.py
         assert!(result.contains("main.py"));
         assert!(result.contains("test_utils.py"));
         assert!(result.contains("3 files already formatted"));
+    }
+
+    #[test]
+    fn test_run_with_output_tees_on_failure() {
+        // tee_raw_scoped writes to /tmp/crunch/{project}/ruff-*.log
+        // Record existing log files before the call
+        let project = crate::tee::detect_project_name();
+        let log_dir = std::path::PathBuf::from("/tmp/crunch").join(&project);
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let before: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+
+        // Large enough JSON output to trigger tee (>500 chars)
+        let big_output = r#"[
+  {"code":"F401","message":"unused import","location":{"row":1,"column":0},"end_location":{"row":1,"column":0},"filename":"src/main.py","fix":null},
+  {"code":"E501","message":"line too long","location":{"row":2,"column":0},"end_location":{"row":2,"column":0},"filename":"src/utils.py","fix":null}
+]
+"#;
+        // Pad to >500 chars
+        let padded = format!("{}{}", big_output, " ".repeat(600));
+        let args: Vec<String> = vec!["check".to_string()];
+
+        // Use exit_code=0 to avoid process::exit killing the test runner.
+        let _ = super::run_with_output(&padded, &args, 0, 0);
+
+        // A new ruff tee file should have been created
+        let after: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+
+        let new_files: Vec<_> = after.difference(&before).collect();
+        let ruff_files: Vec<_> = new_files
+            .iter()
+            .filter(|f| f.to_string_lossy().starts_with("ruff-"))
+            .collect();
+        assert!(
+            !ruff_files.is_empty(),
+            "Expected a ruff tee file in {:?}, but none found — tee_and_hint_scoped is missing from run_with_output",
+            log_dir
+        );
     }
 
     #[test]

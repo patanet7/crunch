@@ -17,7 +17,11 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
     let clean = strip_ansi(raw);
     let filtered = filter_mypy_output(&clean);
 
-    println!("{}", filtered);
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(raw, "mypy", args, exit_code) {
+        println!("{}\n{}", filtered, hint);
+    } else {
+        println!("{}", filtered);
+    }
 
     timer.track(
         &format!("mypy {}", args.join(" ")),
@@ -384,6 +388,48 @@ Found 1 error in 1 file
         let output = "Success: no issues found in 5 source files\n";
         let result = filter_mypy_output(output);
         assert_eq!(result, "mypy: No issues found");
+    }
+
+    #[test]
+    fn test_run_with_output_tees_on_failure() {
+        // tee_raw_scoped writes to /tmp/crunch/{project}/mypy-*.log
+        let project = crate::tee::detect_project_name();
+        let log_dir = std::path::PathBuf::from("/tmp/crunch").join(&project);
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let before: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+
+        // Large enough mypy output to trigger tee (>500 chars)
+        let mut big_output = String::new();
+        for i in 1..=20 {
+            big_output.push_str(&format!(
+                "src/file{}.py:{}: error: Incompatible return value type (got \"str\", expected \"int\")  [return-value]\n",
+                i, i
+            ));
+        }
+        big_output.push_str(&format!("Found 20 errors in 20 files\n{}", " ".repeat(200)));
+
+        let args: Vec<String> = vec![];
+
+        // Use exit_code=0 to avoid process::exit killing the test runner.
+        let _ = super::run_with_output(&big_output, &args, 0, 0);
+
+        let after: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+
+        let new_files: Vec<_> = after.difference(&before).collect();
+        let mypy_files: Vec<_> = new_files
+            .iter()
+            .filter(|f| f.to_string_lossy().starts_with("mypy-"))
+            .collect();
+        assert!(
+            !mypy_files.is_empty(),
+            "Expected a mypy tee file in {:?}, but none found — tee_and_hint_scoped is missing from run_with_output",
+            log_dir
+        );
     }
 
     #[test]
