@@ -74,7 +74,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     let filtered = filter_minitest_output(&raw);
 
     let exit_code = exit_code_from_output(&output, "rake");
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "rake", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "rake", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);

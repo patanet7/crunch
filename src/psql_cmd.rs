@@ -49,7 +49,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     let filtered = filter_psql_output(&stdout);
 
-    if let Some(hint) = crate::tee::tee_and_hint(&stdout, "psql", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&stdout, "psql", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);

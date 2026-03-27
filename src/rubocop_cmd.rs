@@ -93,7 +93,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         filter_rubocop_json(&stdout)
     };
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "rubocop", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "rubocop", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);

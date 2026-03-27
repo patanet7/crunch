@@ -69,7 +69,7 @@ pub fn run_test(args: &[String], verbose: u8) -> Result<()> {
         .unwrap_or(if output.status.success() { 0 } else { 1 });
     let filtered = filter_go_test_json(&stdout);
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "go_test", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "go_test", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);
@@ -123,7 +123,7 @@ pub fn run_build(args: &[String], verbose: u8) -> Result<()> {
         .unwrap_or(if output.status.success() { 0 } else { 1 });
     let filtered = filter_go_build(&raw);
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "go_build", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "go_build", args, exit_code) {
         if !filtered.is_empty() {
             println!("{}\n{}", filtered, hint);
         } else {
@@ -176,7 +176,7 @@ pub fn run_vet(args: &[String], verbose: u8) -> Result<()> {
         .unwrap_or(if output.status.success() { 0 } else { 1 });
     let filtered = filter_go_vet(&raw);
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "go_vet", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "go_vet", args, exit_code) {
         if !filtered.is_empty() {
             println!("{}\n{}", filtered, hint);
         } else {

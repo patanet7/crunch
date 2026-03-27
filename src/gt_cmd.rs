@@ -59,7 +59,7 @@ fn run_gt_filtered(
         filter_fn(&clean)
     };
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, tee_label, exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, tee_label, args, exit_code) {
         println!("{}\n{}", output, hint);
     } else {
         println!("{}", output);

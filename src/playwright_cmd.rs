@@ -315,7 +315,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     };
 
     let exit_code = output.status.code().unwrap_or(1);
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "playwright", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "playwright", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);

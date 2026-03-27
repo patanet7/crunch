@@ -53,7 +53,7 @@ pub fn run_err(command: &str, verbose: u8) -> Result<()> {
         .status
         .code()
         .unwrap_or(if output.status.success() { 0 } else { 1 });
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "err", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "err", &[], exit_code) {
         println!("{}\n{}", rtk, hint);
     } else {
         println!("{}", rtk);
@@ -94,7 +94,7 @@ pub fn run_test(command: &str, verbose: u8) -> Result<()> {
         .code()
         .unwrap_or(if output.status.success() { 0 } else { 1 });
     let summary = extract_test_summary(&raw, command);
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "test", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "test", &[], exit_code) {
         println!("{}\n{}", summary, hint);
     } else {
         println!("{}", summary);

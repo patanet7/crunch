@@ -107,7 +107,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         filter_rspec_output(&stdout)
     };
 
-    if let Some(hint) = crate::tee::tee_and_hint(&raw, "rspec", exit_code) {
+    if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, "rspec", args, exit_code) {
         println!("{}\n{}", filtered, hint);
     } else {
         println!("{}", filtered);
