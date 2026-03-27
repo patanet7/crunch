@@ -1,4 +1,5 @@
 use crate::config::Config;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Minimum output size to tee (smaller outputs don't need recovery)
@@ -181,14 +182,131 @@ pub fn tee_and_hint(raw: &str, command_slug: &str, exit_code: i32) -> Option<Str
     Some(format_hint(&path))
 }
 
+/// Detect project name from git root or cwd basename.
+pub fn detect_project_name() -> String {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Some(name) = std::path::Path::new(&path).file_name() {
+                return name.to_string_lossy().to_string();
+            }
+        }
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Derive scope from command args. Falls back to "all".
+pub fn detect_scope(args: &[String]) -> String {
+    for arg in args {
+        if arg.starts_with('-') {
+            continue;
+        }
+        let path = std::path::Path::new(arg);
+        if let Some(stem) = path.file_stem() {
+            return sanitize_slug(&stem.to_string_lossy());
+        }
+    }
+    "all".to_string()
+}
+
+/// Build log path: /tmp/crunch/{project}/{tool}-{scope}-{timestamp}.log
+pub fn build_log_path(project: &str, tool: &str, scope: &str) -> PathBuf {
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let filename = format!(
+        "{}-{}-{}.log",
+        sanitize_slug(tool),
+        sanitize_slug(scope),
+        timestamp
+    );
+    PathBuf::from("/tmp/crunch")
+        .join(sanitize_slug(project))
+        .join(filename)
+}
+
+/// Write raw output to project-scoped tee file.
+pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) -> Option<PathBuf> {
+    if std::env::var("CRUNCH_TEE").ok().as_deref() == Some("0") {
+        return None;
+    }
+
+    let config = Config::load().ok().map(|c| c.tee).unwrap_or_default();
+
+    if !config.is_tool_enabled(tool) {
+        return None;
+    }
+
+    match config.mode {
+        TeeMode::Never => return None,
+        TeeMode::Failures => {
+            if exit_code == 0 {
+                return None;
+            }
+        }
+        TeeMode::Always => {}
+    }
+
+    if raw.len() < MIN_TEE_SIZE {
+        return None;
+    }
+
+    let project = detect_project_name();
+    let scope = detect_scope(args);
+    let log_path = build_log_path(&project, tool, &scope);
+
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent).ok()?;
+    }
+
+    let content = if raw.len() > config.max_file_size {
+        format!(
+            "{}\n\n--- truncated at {} bytes ---",
+            &raw[..config.max_file_size],
+            config.max_file_size
+        )
+    } else {
+        raw.to_string()
+    };
+
+    std::fs::write(&log_path, content).ok()?;
+
+    if let Some(parent) = log_path.parent() {
+        cleanup_old_files(parent, config.max_files);
+    }
+
+    Some(log_path)
+}
+
+/// Convenience: tee + format hint for project-scoped logs.
+pub fn tee_and_hint_scoped(
+    raw: &str,
+    tool: &str,
+    args: &[String],
+    exit_code: i32,
+) -> Option<String> {
+    let path = tee_raw_scoped(raw, tool, args, exit_code)?;
+    Some(format_hint(&path))
+}
+
 /// TeeMode controls when tee writes files.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TeeMode {
-    #[default]
     Failures,
+    #[default]
     Always,
     Never,
+}
+
+/// Per-tool tee override.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TeeToolOverride {
+    pub enabled: bool,
 }
 
 /// Configuration for the tee feature.
@@ -200,6 +318,20 @@ pub struct TeeConfig {
     pub max_file_size: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<PathBuf>,
+    #[serde(default)]
+    pub overrides: HashMap<String, TeeToolOverride>,
+}
+
+impl TeeConfig {
+    /// Check if tee is enabled for a specific tool.
+    /// Per-tool overrides take precedence over the global `enabled` setting.
+    pub fn is_tool_enabled(&self, tool: &str) -> bool {
+        if let Some(over) = self.overrides.get(tool) {
+            over.enabled
+        } else {
+            self.enabled
+        }
+    }
 }
 
 impl Default for TeeConfig {
@@ -210,6 +342,7 @@ impl Default for TeeConfig {
             max_files: DEFAULT_MAX_FILES,
             max_file_size: DEFAULT_MAX_FILE_SIZE,
             directory: None,
+            overrides: HashMap::new(),
         }
     }
 }
@@ -260,14 +393,20 @@ mod tests {
 
     #[test]
     fn test_should_tee_skip_success_in_failures_mode() {
-        let config = TeeConfig::default(); // mode = Failures
+        let config = TeeConfig {
+            mode: TeeMode::Failures,
+            ..TeeConfig::default()
+        };
         let dir = PathBuf::from("/tmp/tee");
         assert!(should_tee(&config, 1000, 0, Some(dir)).is_none());
     }
 
     #[test]
     fn test_should_tee_proceed_on_failure() {
-        let config = TeeConfig::default(); // mode = Failures
+        let config = TeeConfig {
+            mode: TeeMode::Failures,
+            ..TeeConfig::default()
+        };
         let dir = PathBuf::from("/tmp/tee");
         assert!(should_tee(&config, 1000, 1, Some(dir)).is_some());
     }
@@ -356,10 +495,11 @@ mod tests {
     fn test_tee_config_default() {
         let config = TeeConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.mode, TeeMode::Failures);
+        assert_eq!(config.mode, TeeMode::Always);
         assert_eq!(config.max_files, 20);
         assert_eq!(config.max_file_size, 1_048_576);
         assert!(config.directory.is_none());
+        assert!(config.overrides.is_empty());
     }
 
     #[test]
@@ -396,5 +536,70 @@ directory = "/tmp/rtk-tee"
 
         let mode: TeeMode = serde_json::from_str(r#""never""#).unwrap();
         assert_eq!(mode, TeeMode::Never);
+    }
+
+    #[test]
+    fn test_tee_overrides_deserialize() {
+        let toml_str = r#"
+enabled = true
+mode = "always"
+max_files = 20
+max_file_size = 1048576
+
+[overrides]
+git = { enabled = false }
+ls = { enabled = false }
+pytest = { enabled = true }
+"#;
+        let config: TeeConfig = toml::from_str(toml_str).unwrap();
+        assert!(!config.is_tool_enabled("git"));
+        assert!(!config.is_tool_enabled("ls"));
+        assert!(config.is_tool_enabled("pytest"));
+        assert!(config.is_tool_enabled("cargo")); // inherits global
+    }
+
+    #[test]
+    fn test_project_log_path_format() {
+        let path = build_log_path("myproject", "pytest", "test_build");
+        let path_str = path.to_string_lossy();
+        assert!(path_str.starts_with("/tmp/crunch/myproject/"));
+        assert!(path_str.contains("pytest-test_build-"));
+        assert!(path_str.ends_with(".log"));
+    }
+
+    #[test]
+    fn test_detect_project_name() {
+        let name = detect_project_name();
+        assert!(!name.is_empty());
+    }
+
+    #[test]
+    fn test_detect_scope_from_args() {
+        assert_eq!(
+            detect_scope(&["tests/test_build.py".to_string()]),
+            "test_build"
+        );
+        assert_eq!(detect_scope(&["-x".to_string(), "-q".to_string()]), "all");
+        assert_eq!(detect_scope(&[]), "all");
+    }
+
+    #[test]
+    fn test_tee_default_is_always() {
+        let config = TeeConfig::default();
+        assert_eq!(config.mode, TeeMode::Always);
+    }
+
+    #[test]
+    fn test_hint_shown_for_tmp_path() {
+        let path = PathBuf::from("/tmp/crunch/myproject/pytest-test_build-20260327-143012.log");
+        let hint = format_hint(&path);
+        assert!(hint.contains("/tmp/crunch/myproject/pytest-test_build-20260327-143012.log"));
+    }
+
+    #[test]
+    fn test_hint_format_no_tilde_for_tmp() {
+        let path = PathBuf::from("/tmp/crunch/myproject/pytest-all-20260327-143012.log");
+        let hint = format_hint(&path);
+        assert!(hint.starts_with("[full output: /tmp/crunch/"));
     }
 }
