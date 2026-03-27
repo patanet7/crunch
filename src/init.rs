@@ -732,7 +732,8 @@ fn patch_settings_json(
     }
 
     // Deep-merge hook
-    insert_hook_entry(&mut root, hook_command);
+    insert_hook_entry(&mut root, hook_command)
+        .context("Failed to insert hook entry into settings.json")?;
 
     // Backup original
     if settings_path.exists() {
@@ -797,29 +798,29 @@ fn clean_double_blanks(content: &str) -> String {
 
 /// Deep-merge Crunch hook entry into settings.json
 /// Creates hooks.PreToolUse structure if missing, preserves existing hooks
-fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) {
+fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) -> Result<()> {
     // Ensure root is an object
-    let root_obj = match root.as_object_mut() {
-        Some(obj) => obj,
-        None => {
-            *root = serde_json::json!({});
-            root.as_object_mut()
-                .expect("Just created object, must succeed")
-        }
-    };
+    if !root.is_object() {
+        *root = serde_json::json!({});
+    }
+    let root_obj = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("settings.json root must be an object"))?;
 
     // Use entry() API for idiomatic insertion
-    let hooks = root_obj
+    let hooks_val = root_obj
         .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}))
+        .or_insert_with(|| serde_json::json!({}));
+    let hooks = hooks_val
         .as_object_mut()
-        .expect("hooks must be an object");
+        .ok_or_else(|| anyhow::anyhow!("'hooks' field must be an object, found unexpected type"))?;
 
-    let pre_tool_use = hooks
+    let pre_tool_use_val = hooks
         .entry("PreToolUse")
-        .or_insert_with(|| serde_json::json!([]))
-        .as_array_mut()
-        .expect("PreToolUse must be an array");
+        .or_insert_with(|| serde_json::json!([]));
+    let pre_tool_use = pre_tool_use_val.as_array_mut().ok_or_else(|| {
+        anyhow::anyhow!("'hooks.PreToolUse' must be an array, found unexpected type")
+    })?;
 
     // Append Crunch hook entry
     pre_tool_use.push(serde_json::json!({
@@ -829,6 +830,8 @@ fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) {
             "command": hook_command
         }]
     }));
+
+    Ok(())
 }
 
 /// Check if Crunch hook is already present in settings.json
@@ -1369,7 +1372,7 @@ fn patch_claude_md(path: &Path, verbose: u8) -> Result<bool> {
             eprintln!("@CRUNCH.md reference already present in CLAUDE.md");
         }
         if migrated {
-            fs::write(path, content)?;
+            atomic_write(path, &content)?;
         }
         return Ok(migrated);
     }
@@ -1381,7 +1384,7 @@ fn patch_claude_md(path: &Path, verbose: u8) -> Result<bool> {
         format!("{}\n\n@CRUNCH.md\n", content.trim())
     };
 
-    fs::write(path, new_content)?;
+    atomic_write(path, &new_content)?;
 
     if verbose > 0 {
         eprintln!("Added @CRUNCH.md reference to CLAUDE.md");
@@ -2580,6 +2583,66 @@ More notes
     }
 
     #[test]
+    fn test_patch_claude_md_adds_reference_to_empty_file() {
+        let temp = TempDir::new().unwrap();
+        let claude_md = temp.path().join("CLAUDE.md");
+
+        // File does not exist yet; returns migrated=false (no old block to migrate)
+        let migrated = patch_claude_md(&claude_md, 0).unwrap();
+        assert!(!migrated);
+
+        let content = fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("@CRUNCH.md"));
+    }
+
+    #[test]
+    fn test_patch_claude_md_adds_reference_to_existing_file() {
+        let temp = TempDir::new().unwrap();
+        let claude_md = temp.path().join("CLAUDE.md");
+        fs::write(&claude_md, "# My project\n").unwrap();
+
+        // returns migrated=false (no old block to migrate)
+        let migrated = patch_claude_md(&claude_md, 0).unwrap();
+        assert!(!migrated);
+
+        let content = fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("@CRUNCH.md"));
+        assert!(content.contains("# My project"));
+    }
+
+    #[test]
+    fn test_patch_claude_md_idempotent() {
+        let temp = TempDir::new().unwrap();
+        let claude_md = temp.path().join("CLAUDE.md");
+
+        patch_claude_md(&claude_md, 0).unwrap();
+        patch_claude_md(&claude_md, 0).unwrap();
+
+        let content = fs::read_to_string(&claude_md).unwrap();
+        // Should only have one @CRUNCH.md reference
+        assert_eq!(content.matches("@CRUNCH.md").count(), 1);
+    }
+
+    #[test]
+    fn test_patch_claude_md_migrates_inline_block() {
+        let temp = TempDir::new().unwrap();
+        let claude_md = temp.path().join("CLAUDE.md");
+        fs::write(
+            &claude_md,
+            "# My project\n\n<!-- crunch-instructions v2 -->\nold content\n<!-- /crunch-instructions -->\n",
+        )
+        .unwrap();
+
+        let migrated = patch_claude_md(&claude_md, 0).unwrap();
+        // migrated = true since old block was removed
+        assert!(migrated);
+
+        let content = fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("@CRUNCH.md"));
+        assert!(!content.contains("<!-- crunch-instructions"));
+    }
+
+    #[test]
     fn test_init_is_idempotent() {
         let temp = TempDir::new().unwrap();
         let claude_md = temp.path().join("CLAUDE.md");
@@ -2784,7 +2847,7 @@ More notes
         let mut json_content = serde_json::json!({});
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
 
-        insert_hook_entry(&mut json_content, hook_command);
+        insert_hook_entry(&mut json_content, hook_command).unwrap();
 
         // Should create full structure
         assert!(json_content.get("hooks").is_some());
@@ -2816,7 +2879,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command);
+        insert_hook_entry(&mut json_content, hook_command).unwrap();
 
         let pre_tool_use = json_content["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre_tool_use.len(), 2); // Should have both hooks
@@ -2839,7 +2902,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command);
+        insert_hook_entry(&mut json_content, hook_command).unwrap();
 
         // Should preserve all other keys
         assert_eq!(json_content["env"]["PATH"], "/custom/path");
@@ -3062,6 +3125,24 @@ More notes
 
         let removed = remove_cursor_hook_from_json(&mut json_content);
         assert!(!removed);
+    }
+
+    #[test]
+    fn test_insert_hook_entry_handles_malformed_hooks() {
+        let malformed = r#"{"hooks": "not_an_object"}"#;
+        let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
+        let result = insert_hook_entry(&mut value, "echo test");
+        // Should return Err, not panic
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_insert_hook_entry_handles_malformed_pre_tool_use() {
+        let malformed = r#"{"hooks": {"PreToolUse": "not_an_array"}}"#;
+        let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
+        let result = insert_hook_entry(&mut value, "echo test");
+        // Should return Err, not panic
+        assert!(result.is_err());
     }
 
     #[test]
