@@ -1,6 +1,6 @@
 # Crunch — Design Spec
 
-> A privacy-respecting, mise-aware output compression proxy for AI coding assistants.
+> A mise-aware output compression proxy for AI coding assistants.
 > Fork of [RTK](https://github.com/rtk-ai/rtk) (Apache-2.0) with telemetry removed,
 > log-first architecture, and mise task runner integration.
 
@@ -11,7 +11,6 @@ LLM coding assistants consume large amounts of context window on verbose tool ou
 parsers that compress output, but it:
 
 - Phones home with telemetry and Datadog traces
-- Tracks token usage in a local SQLite database
 - Has no awareness of task runners like mise
 - Treats compressed output as the only copy (lossy)
 
@@ -19,10 +18,10 @@ parsers that compress output, but it:
 
 **Crunch** is a fork of RTK that:
 
-1. Strips all telemetry and token tracking
+1. Strips network telemetry (the only thing removed)
 2. Adds mise integration — project tools route through mise, other engineers use mise directly
 3. Implements log-first architecture — raw output always saved to disk, model gets compressed summary with log path on failure/warning
-4. Keeps all 71 RTK parsers and the multi-agent init system intact
+4. Keeps all 71 RTK parsers, the multi-agent init system, and local analytics intact
 
 ## Architecture
 
@@ -158,47 +157,56 @@ pytest = { enabled = true }  # always log (default)
 
 Tee defaults to **on** for all tools. Opt out of things you don't need, not opt in.
 
-## What Gets Stripped from RTK
+## What Changed from RTK
 
-### Files to Delete
+### File Removed
 
 | File | Reason |
 |------|--------|
-| `telemetry.rs` | Phones home to RTK servers |
-| `tracking.rs` | SQLite token counting database |
-| `local_llm.rs` | Local LLM inference |
-| `cc_economics.rs`, `ccusage.rs` | Token cost calculators |
-| `gain.rs` | "How many tokens did I save" reporting |
-| `session_cmd.rs` | Session management |
-| `discover/` | Project introspection module |
-| `learn/` | Learning/reporting module |
-| `integrity.rs`, `verify_cmd.rs` | RTK self-verification |
-| `hook_audit_cmd.rs` | Multi-tool hook auditing |
+| `telemetry.rs` | Phones home to RTK servers — the only file deleted |
 
-### Files to Modify
+`ureq` and `hostname` dependencies removed from `Cargo.toml` along with `telemetry.rs`.
+
+### Kept from RTK
+
+Everything else is intentionally retained. RTK's local-only features are useful, not harmful:
+
+- `tracking.rs` — local SQLite token counting; no network calls, useful for local analytics
+- `gain.rs` — "tokens saved" reporting; purely local, good feedback
+- `cc_economics.rs`, `ccusage.rs` — token cost calculators; local only
+- `session_cmd.rs` — session management; local only
+- `discover/` — project introspection; local only
+- `learn/` — learning/reporting; local only
+- `integrity.rs`, `verify_cmd.rs` — self-verification; useful for debugging
+- `hook_audit_cmd.rs` — multi-tool hook auditing; useful
+- `local_llm.rs` — local LLM inference; kept for completeness
+
+The distinction is simple: **network calls** are bad (removed). **Local storage and analytics** are fine (kept).
+
+### Files Modified
 
 | File | Changes |
 |------|---------|
-| `main.rs` | Remove enum variants for deleted modules, remove telemetry init |
-| `config.rs` | Remove `TelemetryConfig`, `TrackingConfig`; add `MiseConfig`, `TeeConfig` with overrides |
-| `tee.rs` | Project-scoped logging, always-on default, path template, scope detection |
-| `Cargo.toml` | Remove unused deps, rename package to `crunch` |
+| `main.rs` | Renamed to `crunch`, added mise routing via `try_mise_route`, removed telemetry init |
+| `config.rs` | Removed `TelemetryConfig`; added `MiseConfig`, `TeeConfig` with per-tool overrides; `cached_config`, `merge_configs_from_str` |
+| `tee.rs` | Project-scoped logging, always-on default, path template, scope detection, cached project name, per-tool overrides |
+| `Cargo.toml` | Renamed package to `crunch`, removed `ureq`/`hostname` deps |
 
-### Files to Keep Untouched
+### File Added
+
+| File | Purpose |
+|------|---------|
+| `mise_cmd.rs` | Mise routing: config lookup, tool→task dispatch, flag passthrough |
+
+### Files Kept Untouched
 
 - All 71 parser modules (git.rs, pytest_cmd.rs, ruff_cmd.rs, grep_cmd.rs, ls.rs, container.rs, etc.)
 - `filter.rs` — language-aware code filtering engine
 - `utils.rs`, `display_helpers.rs` — shared utilities
 - `parser/` — error parsing infrastructure
 - `runner.rs` — command execution
-- `init.rs` — keep all agent init paths (Claude Code, Cursor, Gemini, etc.)
-- `hook_cmd.rs`, `rewrite_cmd.rs` — keep hook system as optional
-
-### Files to Add
-
-| File | Purpose |
-|------|---------|
-| `mise_cmd.rs` | Mise routing: config lookup, tool→task dispatch, flag passthrough |
+- `init.rs` — all agent init paths (Claude Code, Cursor, Gemini, etc.)
+- `hook_cmd.rs`, `rewrite_cmd.rs` — hook system
 
 ## Claude Code Integration
 
@@ -312,7 +320,7 @@ No `.crunch.toml` means no mise routing — crunch behaves like vanilla RTK.
 1. `crunch pytest` routes through mise and returns compressed output
 2. Raw output always available at predictable log path
 3. Model can `Read` log path for full output when summary isn't enough
-4. Zero telemetry — no network calls, no tracking database
+4. Zero telemetry — no network calls; local SQLite analytics retained
 5. All existing RTK parsers work unchanged (git, grep, ls, docker, etc.)
 6. Other engineers on the project use `mise run test` directly — crunch is invisible to them
 7. `crunch init -g` sets up Claude Code hook in one command
