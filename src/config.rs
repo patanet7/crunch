@@ -2,6 +2,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+static CACHED_CONFIG: OnceLock<Config> = OnceLock::new();
+
+/// Get the merged config, loading from disk only once per process.
+pub fn cached_config() -> &'static Config {
+    CACHED_CONFIG.get_or_init(|| load_merged().unwrap_or_default())
+}
 
 /// Tool-to-task mapping for mise integration.
 /// Keys are tool names (e.g., "pytest"), values are mise task names (e.g., "test").
@@ -117,8 +125,8 @@ impl Default for LimitsConfig {
 }
 
 /// Get limits config. Falls back to defaults if config can't be loaded.
-pub fn limits() -> LimitsConfig {
-    Config::load().map(|c| c.limits).unwrap_or_default()
+pub fn limits() -> &'static LimitsConfig {
+    &cached_config().limits
 }
 
 impl Config {
@@ -275,6 +283,14 @@ history_days = 90
 "#;
         let config: Config = toml::from_str(toml).expect("valid toml");
         assert!(config.mise.is_empty());
+    }
+
+    #[test]
+    fn test_cached_config_returns_same_instance() {
+        let c1 = super::cached_config();
+        let c2 = super::cached_config();
+        // Both should return the same reference (same pointer)
+        assert!(std::ptr::eq(c1, c2));
     }
 
     #[test]

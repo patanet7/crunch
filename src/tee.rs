@@ -1,4 +1,3 @@
-use crate::config::Config;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -123,7 +122,7 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
         return None;
     }
 
-    let config = Config::load().ok().map(|c| c.tee).unwrap_or_default();
+    let config = crate::config::cached_config().tee.clone();
 
     if !config.is_tool_enabled(tool) {
         return None;
