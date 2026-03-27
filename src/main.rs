@@ -1282,7 +1282,17 @@ fn shell_split(input: &str) -> Vec<String> {
 /// and return the raw output. The caller is responsible for parsing.
 fn try_mise_route(tool: &str, args: &[String], verbose: u8) -> Option<std::process::Output> {
     let task = mise_cmd::lookup_mise_task(tool)?;
-    mise_cmd::execute_via_mise(&task, args, verbose).ok()
+    match mise_cmd::execute_via_mise(&task, args, verbose) {
+        Ok(output) => Some(output),
+        Err(e) => {
+            eprintln!(
+                "[crunch] warning: mise task '{}' configured for '{}' but failed to execute: {}",
+                task, tool, e
+            );
+            eprintln!("[crunch] falling back to direct execution");
+            None
+        }
+    }
 }
 
 fn main() -> Result<()> {
