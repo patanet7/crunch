@@ -477,6 +477,26 @@ mod tests {
     }
 
     #[test]
+    fn test_write_tee_file_truncation_multibyte_utf8() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        // Each emoji is 4 bytes. 250 emojis = 1000 bytes exactly.
+        // Truncating at 999 bytes would land inside an emoji without char-boundary fix.
+        let emoji_output = "🦀".repeat(250); // 1000 bytes
+        assert_eq!(emoji_output.len(), 1000);
+
+        // Truncate at 999 — lands inside a 4-byte char
+        let result = write_tee_file(&emoji_output, "test", tmpdir.path(), 999, 20);
+        assert!(result.is_some());
+
+        let path = result.unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        // Must not panic, and content must be valid UTF-8 (fs::read_to_string proves this)
+        assert!(content.contains("--- truncated at 999 bytes ---"));
+        // The truncated content should end at a char boundary (996 = 249 * 4)
+        assert!(content.starts_with("🦀"));
+    }
+
+    #[test]
     fn test_cleanup_old_files() {
         let tmpdir = tempfile::tempdir().unwrap();
         let dir = tmpdir.path();
