@@ -26,6 +26,7 @@ fn sanitize_slug(slug: &str) -> String {
         })
         .collect();
     if sanitized.len() > 40 {
+        // Safe to slice at byte offset: the .map() above guarantees all chars are ASCII
         sanitized[..40].to_string()
     } else {
         sanitized
@@ -301,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_format_hint() {
-        let path = PathBuf::from("/tmp/rtk/tee/123_cargo_test.log");
+        let path = PathBuf::from("/tmp/crunch/tee/123_cargo_test.log");
         let hint = format_hint(&path);
         assert!(hint.starts_with("[full output: "));
         assert!(hint.ends_with(']'));
@@ -326,14 +327,14 @@ enabled = true
 mode = "always"
 max_files = 10
 max_file_size = 524288
-directory = "/tmp/rtk-tee"
+directory = "/tmp/crunch-tee"
 "#;
         let config: TeeConfig = toml::from_str(toml_str).unwrap();
         assert!(config.enabled);
         assert_eq!(config.mode, TeeMode::Always);
         assert_eq!(config.max_files, 10);
         assert_eq!(config.max_file_size, 524288);
-        assert_eq!(config.directory, Some(PathBuf::from("/tmp/rtk-tee")));
+        assert_eq!(config.directory, Some(PathBuf::from("/tmp/crunch-tee")));
 
         // Round-trip
         let serialized = toml::to_string_pretty(&config).unwrap();

@@ -20,7 +20,7 @@ fn validate_json_extension(file: &Path) -> Result<()> {
         };
         if let Some(fmt) = format_name {
             let mut msg = format!(
-                "{} is not a JSON file (detected {}). Use `rtk read` for non-JSON files.",
+                "{} is not a JSON file (detected {}). Use `crunch read` for non-JSON files.",
                 file.display(),
                 fmt
             );

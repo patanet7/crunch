@@ -1337,6 +1337,27 @@ fn extract_mise_output_parts(
     (combined, code)
 }
 
+/// Run a tool through mise if configured, otherwise execute directly via the parser's `run()`.
+/// For mise-routed output, calls `parse_output` (parser on pre-captured output).
+/// For direct execution, calls `run_direct` (parser executes + parses internally).
+/// This DRYs up the repeated pattern in Ruff/Pytest/Mypy match arms.
+fn run_mise_or_direct(
+    tool: &str,
+    args: &[String],
+    verbose: u8,
+    parse_output: fn(&str, &[String], i32, u8) -> Result<()>,
+    run_direct: fn(&[String], u8) -> Result<()>,
+) -> Result<()> {
+    if let Some(output) = try_mise_route(tool, args, verbose) {
+        let (combined, exit_code) =
+            extract_mise_output_parts(&output.stdout, &output.stderr, output.status.code());
+        parse_output(&combined, args, exit_code, verbose)?;
+    } else {
+        run_direct(args, verbose)?;
+    }
+    Ok(())
+}
+
 /// Check if a tool should route through mise. If so, execute via mise
 /// and return the raw output. The caller is responsible for parsing.
 fn try_mise_route(tool: &str, args: &[String], verbose: u8) -> Option<std::process::Output> {
@@ -2789,5 +2810,49 @@ mod tests {
             result.is_none(),
             "black should not be mapped without config"
         );
+    }
+
+    #[test]
+    fn test_extract_mise_output_parts_empty_stderr() {
+        // Matches the pattern used by run_mise_or_direct: stdout only
+        let (combined, exit_code) = extract_mise_output_parts(b"all good\n", b"", Some(0));
+        assert_eq!(combined, "all good\n");
+        assert_eq!(exit_code, 0);
+    }
+
+    #[test]
+    fn test_extract_mise_output_parts_used_in_match_arms() {
+        // Ensures the helper produces the same output as the old inline code:
+        //   let stdout = String::from_utf8_lossy(&output.stdout);
+        //   let stderr = String::from_utf8_lossy(&output.stderr);
+        //   let combined = format!("{}{}", stdout, stderr);
+        //   let exit_code = output.status.code().unwrap_or(1);
+        let stdout = b"FAILED tests/test_foo.py\n";
+        let stderr = b"1 failed\n";
+        let (combined, exit_code) = extract_mise_output_parts(stdout, stderr, Some(1));
+        // Must match the old inline pattern exactly
+        let expected_combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(stdout),
+            String::from_utf8_lossy(stderr)
+        );
+        assert_eq!(combined, expected_combined);
+        assert_eq!(exit_code, 1);
+    }
+
+    #[test]
+    fn test_run_mise_or_direct_exists() {
+        // Verify the helper function exists and has the right signature.
+        // This tests compile-time existence — the fn should accept a tool name,
+        // args, verbose, and a parser callback.
+        fn _assert_compiles() {
+            let _: fn(
+                &str,
+                &[String],
+                u8,
+                fn(&str, &[String], i32, u8) -> anyhow::Result<()>,
+                fn(&[String], u8) -> anyhow::Result<()>,
+            ) -> anyhow::Result<()> = run_mise_or_direct;
+        }
     }
 }

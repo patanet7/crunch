@@ -12,7 +12,7 @@ enum HookFormat {
     VsCode { command: String },
     /// GitHub Copilot CLI: camelCase `toolName` + `toolArgs` (JSON string), deny-with-suggestion only.
     CopilotCli { command: String },
-    /// Non-bash tool, already uses rtk, or unknown format — pass through silently.
+    /// Non-bash tool, already uses crunch, or unknown format — pass through silently.
     PassThrough,
 }
 
@@ -129,7 +129,7 @@ fn handle_copilot_cli(cmd: &str) -> Result<()> {
     let output = json!({
         "permissionDecision": "deny",
         "permissionDecisionReason": format!(
-            "Token savings: use `{}` instead (rtk saves 60-90% tokens)",
+            "Token savings: use `{}` instead (crunch saves 60-90% tokens)",
             rewritten
         )
     });
@@ -140,7 +140,7 @@ fn handle_copilot_cli(cmd: &str) -> Result<()> {
 // ── Gemini hook ───────────────────────────────────────────────
 
 /// Run the Gemini CLI BeforeTool hook.
-/// Reads JSON from stdin, rewrites shell commands to rtk equivalents,
+/// Reads JSON from stdin, rewrites shell commands to crunch equivalents,
 /// outputs JSON to stdout in Gemini CLI format.
 pub fn run_gemini() -> Result<()> {
     let mut input = String::new();
