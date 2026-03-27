@@ -1,6 +1,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Tool-to-task mapping for mise integration.
+/// Keys are tool names (e.g., "pytest"), values are mise task names (e.g., "test").
+pub type MiseConfig = HashMap<String, String>;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -16,6 +21,8 @@ pub struct Config {
     pub hooks: HooksConfig,
     #[serde(default)]
     pub limits: LimitsConfig,
+    #[serde(default)]
+    pub mise: MiseConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -198,5 +205,36 @@ history_days = 90
 "#;
         let config: Config = toml::from_str(toml).expect("valid toml");
         assert!(config.hooks.exclude_commands.is_empty());
+    }
+
+    #[test]
+    fn test_mise_config_deserialize() {
+        let toml = r#"
+[mise]
+pytest = "test"
+ruff = "lint"
+mypy = "typecheck"
+"#;
+        let config: Config = toml::from_str(toml).expect("valid toml");
+        assert_eq!(config.mise.get("pytest"), Some(&"test".to_string()));
+        assert_eq!(config.mise.get("ruff"), Some(&"lint".to_string()));
+        assert_eq!(config.mise.get("mypy"), Some(&"typecheck".to_string()));
+    }
+
+    #[test]
+    fn test_mise_config_default_empty() {
+        let config = Config::default();
+        assert!(config.mise.is_empty());
+    }
+
+    #[test]
+    fn test_config_without_mise_section_is_valid() {
+        let toml = r#"
+[tracking]
+enabled = true
+history_days = 90
+"#;
+        let config: Config = toml::from_str(toml).expect("valid toml");
+        assert!(config.mise.is_empty());
     }
 }
