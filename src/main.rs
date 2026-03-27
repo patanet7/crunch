@@ -89,10 +89,10 @@ pub enum AgentTarget {
 
 #[derive(Parser)]
 #[command(
-    name = "rtk",
+    name = "crunch",
     version,
-    about = "Rust Token Killer - Minimize LLM token consumption",
-    long_about = "A high-performance CLI proxy designed to filter and summarize system outputs before they reach your LLM context."
+    about = "Crunch - Output compression proxy for AI coding assistants",
+    long_about = "A privacy-respecting, mise-aware CLI proxy that filters and summarizes tool outputs before they reach your LLM context."
 )]
 struct Cli {
     #[command(subcommand)]

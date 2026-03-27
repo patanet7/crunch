@@ -1,14 +1,11 @@
 [package]
-name = "rtk"
-version = "0.34.0"
+name = "crunch"
+version = "0.1.0"
 edition = "2021"
-authors = ["Patrick Szymkowiak"]
-description = "Rust Token Killer - High-performance CLI proxy to minimize LLM token consumption"
-license = "MIT"
-homepage = "https://www.rtk-ai.app"
-repository = "https://github.com/rtk-ai/rtk"
+description = "Privacy-respecting, mise-aware output compression proxy for AI coding assistants"
+license = "Apache-2.0"
 readme = "README.md"
-keywords = ["cli", "llm", "token", "filter", "productivity"]
+keywords = ["cli", "llm", "token", "filter", "mise"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
@@ -44,20 +41,3 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-# cargo-deb configuration
-[package.metadata.deb]
-maintainer = "Patrick Szymkowiak"
-copyright = "2024 Patrick Szymkowiak"
-license-file = ["LICENSE", "0"]
-extended-description = "rtk filters and compresses command outputs before they reach your LLM context, saving 60-90% of tokens."
-section = "utility"
-priority = "optional"
-assets = [
-    ["target/release/rtk", "usr/bin/", "755"],
-]
-
-# cargo-generate-rpm configuration
-[package.metadata.generate-rpm]
-assets = [
-    { source = "target/release/rtk", dest = "/usr/bin/rtk", mode = "755" },
-]
