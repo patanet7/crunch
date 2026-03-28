@@ -16,8 +16,8 @@ const CURSOR_REWRITE_HOOK: &str = include_str!("../hooks/cursor-crunch-rewrite.s
 const OPENCODE_PLUGIN: &str = include_str!("../hooks/opencode-crunch.ts");
 
 // Embedded slim Crunch awareness instructions
-const RTK_SLIM: &str = include_str!("../hooks/crunch-awareness.md");
-const RTK_SLIM_CODEX: &str = include_str!("../hooks/crunch-awareness-codex.md");
+const CRUNCH_AWARENESS: &str = include_str!("../hooks/crunch-awareness.md");
+const CRUNCH_AWARENESS_CODEX: &str = include_str!("../hooks/crunch-awareness-codex.md");
 
 /// Template written by `crunch init` when no filters.toml exists yet.
 const FILTERS_TEMPLATE: &str = r#"# Project-local Crunch filters — commit this file with your repo.
@@ -66,7 +66,7 @@ pub enum PatchResult {
 }
 
 // Legacy full instructions for backward compatibility (--claude-md mode)
-const RTK_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v2 -->
+const CRUNCH_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v2 -->
 # Crunch - Token-Optimized Commands
 
 ## Golden Rule
@@ -575,11 +575,11 @@ pub fn uninstall(global: bool, gemini: bool, codex: bool, cursor: bool, verbose:
     }
 
     // 2. Remove CRUNCH.md
-    let rtk_md_path = claude_dir.join("CRUNCH.md");
-    if rtk_md_path.exists() {
-        fs::remove_file(&rtk_md_path)
-            .with_context(|| format!("Failed to remove CRUNCH.md: {}", rtk_md_path.display()))?;
-        removed.push(format!("CRUNCH.md: {}", rtk_md_path.display()));
+    let crunch_md_path = claude_dir.join("CRUNCH.md");
+    if crunch_md_path.exists() {
+        fs::remove_file(&crunch_md_path)
+            .with_context(|| format!("Failed to remove CRUNCH.md: {}", crunch_md_path.display()))?;
+        removed.push(format!("CRUNCH.md: {}", crunch_md_path.display()));
     }
 
     // 3. Remove @CRUNCH.md reference from CLAUDE.md
@@ -659,14 +659,14 @@ fn uninstall_codex(global: bool, verbose: u8) -> Result<()> {
 fn uninstall_codex_at(codex_dir: &Path, verbose: u8) -> Result<Vec<String>> {
     let mut removed = Vec::new();
 
-    let rtk_md_path = codex_dir.join("CRUNCH.md");
-    if rtk_md_path.exists() {
-        fs::remove_file(&rtk_md_path)
-            .with_context(|| format!("Failed to remove CRUNCH.md: {}", rtk_md_path.display()))?;
+    let crunch_md_path = codex_dir.join("CRUNCH.md");
+    if crunch_md_path.exists() {
+        fs::remove_file(&crunch_md_path)
+            .with_context(|| format!("Failed to remove CRUNCH.md: {}", crunch_md_path.display()))?;
         if verbose > 0 {
-            eprintln!("Removed CRUNCH.md: {}", rtk_md_path.display());
+            eprintln!("Removed CRUNCH.md: {}", crunch_md_path.display());
         }
-        removed.push(format!("CRUNCH.md: {}", rtk_md_path.display()));
+        removed.push(format!("CRUNCH.md: {}", crunch_md_path.display()));
     }
 
     let agents_md_path = codex_dir.join("AGENTS.md");
@@ -887,7 +887,7 @@ fn run_default_mode(
     }
 
     let claude_dir = resolve_claude_dir()?;
-    let rtk_md_path = claude_dir.join("CRUNCH.md");
+    let crunch_md_path = claude_dir.join("CRUNCH.md");
     let claude_md_path = claude_dir.join("CLAUDE.md");
 
     // 1. Prepare hook directory and install hook
@@ -895,7 +895,7 @@ fn run_default_mode(
     let hook_changed = ensure_hook_installed(&hook_path, verbose)?;
 
     // 2. Write CRUNCH.md
-    write_if_changed(&rtk_md_path, RTK_SLIM, "CRUNCH.md", verbose)?;
+    write_if_changed(&crunch_md_path, CRUNCH_AWARENESS, "CRUNCH.md", verbose)?;
 
     let opencode_plugin_path = if install_opencode {
         let path = prepare_opencode_plugin_path()?;
@@ -916,7 +916,7 @@ fn run_default_mode(
     };
     println!("\nCrunch hook {} (global).\n", hook_status);
     println!("  Hook:      {}", hook_path.display());
-    println!("  CRUNCH.md:    {} (10 lines)", rtk_md_path.display());
+    println!("  CRUNCH.md:    {} (10 lines)", crunch_md_path.display());
     if let Some(path) = &opencode_plugin_path {
         println!("  OpenCode:  {}", path.display());
     }
@@ -1101,8 +1101,8 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
 
     if path.exists() {
         let existing = fs::read_to_string(&path)?;
-        // upsert_rtk_block handles all 4 cases: add, update, unchanged, malformed
-        let (new_content, action) = upsert_rtk_block(&existing, RTK_INSTRUCTIONS);
+        // upsert_crunch_block handles all 4 cases: add, update, unchanged, malformed
+        let (new_content, action) = upsert_crunch_block(&existing, CRUNCH_INSTRUCTIONS);
 
         match action {
             RtkBlockUpsert::Added => {
@@ -1147,7 +1147,7 @@ fn run_claude_md_mode(global: bool, verbose: u8, install_opencode: bool) -> Resu
             }
         }
     } else {
-        fs::write(&path, RTK_INSTRUCTIONS)?;
+        fs::write(&path, CRUNCH_INSTRUCTIONS)?;
         println!("[ok] Created {} with crunch instructions", path.display());
     }
 
@@ -1238,7 +1238,7 @@ fn run_windsurf_mode(verbose: u8) -> Result<()> {
 }
 
 fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
-    let (agents_md_path, rtk_md_path) = if global {
+    let (agents_md_path, crunch_md_path) = if global {
         let codex_dir = resolve_codex_dir()?;
         (codex_dir.join("AGENTS.md"), codex_dir.join("CRUNCH.md"))
     } else {
@@ -1256,11 +1256,16 @@ fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
         }
     }
 
-    write_if_changed(&rtk_md_path, RTK_SLIM_CODEX, "CRUNCH.md", verbose)?;
+    write_if_changed(
+        &crunch_md_path,
+        CRUNCH_AWARENESS_CODEX,
+        "CRUNCH.md",
+        verbose,
+    )?;
     let added_ref = patch_agents_md(&agents_md_path, verbose)?;
 
     println!("\nCrunch configured for Codex CLI.\n");
-    println!("  CRUNCH.md:    {}", rtk_md_path.display());
+    println!("  CRUNCH.md:    {}", crunch_md_path.display());
     if added_ref {
         println!("  AGENTS.md: @CRUNCH.md reference added");
     } else {
@@ -1299,7 +1304,7 @@ enum RtkBlockUpsert {
 ///
 /// Returns `(new_content, action)` describing what happened.
 /// The caller decides whether to write `new_content` based on `action`.
-fn upsert_rtk_block(content: &str, block: &str) -> (String, RtkBlockUpsert) {
+fn upsert_crunch_block(content: &str, block: &str) -> (String, RtkBlockUpsert) {
     let start_marker = "<!-- crunch-instructions";
     let end_marker = "<!-- /crunch-instructions -->";
 
@@ -1806,7 +1811,7 @@ pub fn show_config(codex: bool) -> Result<()> {
 fn show_claude_config() -> Result<()> {
     let claude_dir = resolve_claude_dir()?;
     let hook_path = claude_dir.join("hooks").join("crunch-rewrite.sh");
-    let rtk_md_path = claude_dir.join("CRUNCH.md");
+    let crunch_md_path = claude_dir.join("CRUNCH.md");
     let global_claude_md = claude_dir.join("CLAUDE.md");
     let local_claude_md = PathBuf::from("CLAUDE.md");
 
@@ -1863,8 +1868,8 @@ fn show_claude_config() -> Result<()> {
     }
 
     // Check CRUNCH.md
-    if rtk_md_path.exists() {
-        println!("[ok] CRUNCH.md: {} (slim mode)", rtk_md_path.display());
+    if crunch_md_path.exists() {
+        println!("[ok] CRUNCH.md: {} (slim mode)", crunch_md_path.display());
     } else {
         println!("[--] CRUNCH.md: not found");
     }
@@ -2146,7 +2151,7 @@ pub fn run_gemini(global: bool, hook_only: bool, patch_mode: PatchMode, verbose:
     if !hook_only {
         let gemini_md_path = gemini_dir.join("GEMINI.md");
         // Reuse the same slim Crunch awareness content
-        write_if_changed(&gemini_md_path, RTK_SLIM, "GEMINI.md", verbose)?;
+        write_if_changed(&gemini_md_path, CRUNCH_AWARENESS, "GEMINI.md", verbose)?;
     }
 
     // 3. Patch ~/.gemini/settings.json
@@ -2417,8 +2422,8 @@ mod tests {
             "crunch kubectl",
         ] {
             assert!(
-                RTK_INSTRUCTIONS.contains(cmd),
-                "Missing {cmd} in RTK_INSTRUCTIONS"
+                CRUNCH_INSTRUCTIONS.contains(cmd),
+                "Missing {cmd} in CRUNCH_INSTRUCTIONS"
             );
         }
     }
@@ -2426,8 +2431,8 @@ mod tests {
     #[test]
     fn test_init_has_version_marker() {
         assert!(
-            RTK_INSTRUCTIONS.contains("<!-- crunch-instructions"),
-            "RTK_INSTRUCTIONS must have version marker for idempotency"
+            CRUNCH_INSTRUCTIONS.contains("<!-- crunch-instructions"),
+            "CRUNCH_INSTRUCTIONS must have version marker for idempotency"
         );
     }
 
@@ -2509,16 +2514,16 @@ More content"#;
     fn test_default_mode_creates_hook_and_rtk_md() {
         let temp = TempDir::new().unwrap();
         let hook_path = temp.path().join("crunch-rewrite.sh");
-        let rtk_md_path = temp.path().join("CRUNCH.md");
+        let crunch_md_path = temp.path().join("CRUNCH.md");
 
         fs::write(&hook_path, REWRITE_HOOK).unwrap();
-        fs::write(&rtk_md_path, RTK_SLIM).unwrap();
+        fs::write(&crunch_md_path, CRUNCH_AWARENESS).unwrap();
 
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&hook_path, fs::Permissions::from_mode(0o755)).unwrap();
 
         assert!(hook_path.exists());
-        assert!(rtk_md_path.exists());
+        assert!(crunch_md_path.exists());
 
         let metadata = fs::metadata(&hook_path).unwrap();
         assert!(metadata.permissions().mode() & 0o111 != 0);
@@ -2526,26 +2531,26 @@ More content"#;
 
     #[test]
     fn test_claude_md_mode_creates_full_injection() {
-        // Just verify RTK_INSTRUCTIONS constant has the right content
-        assert!(RTK_INSTRUCTIONS.contains("<!-- crunch-instructions"));
-        assert!(RTK_INSTRUCTIONS.contains("crunch cargo test"));
-        assert!(RTK_INSTRUCTIONS.contains("<!-- /crunch-instructions -->"));
-        assert!(RTK_INSTRUCTIONS.len() > 4000);
+        // Just verify CRUNCH_INSTRUCTIONS constant has the right content
+        assert!(CRUNCH_INSTRUCTIONS.contains("<!-- crunch-instructions"));
+        assert!(CRUNCH_INSTRUCTIONS.contains("crunch cargo test"));
+        assert!(CRUNCH_INSTRUCTIONS.contains("<!-- /crunch-instructions -->"));
+        assert!(CRUNCH_INSTRUCTIONS.len() > 4000);
     }
 
-    // --- upsert_rtk_block tests ---
+    // --- upsert_crunch_block tests ---
 
     #[test]
-    fn test_upsert_rtk_block_appends_when_missing() {
+    fn test_upsert_crunch_block_appends_when_missing() {
         let input = "# Team instructions";
-        let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
+        let (content, action) = upsert_crunch_block(input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Added);
         assert!(content.contains("# Team instructions"));
         assert!(content.contains("<!-- crunch-instructions"));
     }
 
     #[test]
-    fn test_upsert_rtk_block_updates_stale_block() {
+    fn test_upsert_crunch_block_updates_stale_block() {
         let input = r#"# Team instructions
 
 <!-- crunch-instructions v1 -->
@@ -2555,29 +2560,29 @@ OLD CRUNCH CONTENT
 More notes
 "#;
 
-        let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
+        let (content, action) = upsert_crunch_block(input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Updated);
         assert!(!content.contains("OLD CRUNCH CONTENT"));
-        assert!(content.contains("crunch cargo test")); // from current RTK_INSTRUCTIONS
+        assert!(content.contains("crunch cargo test")); // from current CRUNCH_INSTRUCTIONS
         assert!(content.contains("# Team instructions"));
         assert!(content.contains("More notes"));
     }
 
     #[test]
-    fn test_upsert_rtk_block_noop_when_already_current() {
+    fn test_upsert_crunch_block_noop_when_already_current() {
         let input = format!(
             "# Team instructions\n\n{}\n\nMore notes\n",
-            RTK_INSTRUCTIONS
+            CRUNCH_INSTRUCTIONS
         );
-        let (content, action) = upsert_rtk_block(&input, RTK_INSTRUCTIONS);
+        let (content, action) = upsert_crunch_block(&input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Unchanged);
         assert_eq!(content, input);
     }
 
     #[test]
-    fn test_upsert_rtk_block_detects_malformed_block() {
+    fn test_upsert_crunch_block_detects_malformed_block() {
         let input = "<!-- crunch-instructions v2 -->\npartial";
-        let (content, action) = upsert_rtk_block(input, RTK_INSTRUCTIONS);
+        let (content, action) = upsert_crunch_block(input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Malformed);
         assert_eq!(content, input);
     }
@@ -2772,7 +2777,7 @@ More notes
         let temp = TempDir::new().unwrap();
         let claude_md = temp.path().join("CLAUDE.md");
 
-        fs::write(&claude_md, RTK_INSTRUCTIONS).unwrap();
+        fs::write(&claude_md, CRUNCH_INSTRUCTIONS).unwrap();
         let content = fs::read_to_string(&claude_md).unwrap();
 
         assert!(content.contains("<!-- crunch-instructions"));

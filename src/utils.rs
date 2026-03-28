@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_detect_package_manager_default() {
-        // In the test environment (rtk repo), there's no JS lockfile
+        // In the test environment (crunch repo), there's no JS lockfile
         // so it should default to "npm"
         let pm = detect_package_manager();
         assert!(["pnpm", "yarn", "npm"].contains(&pm));

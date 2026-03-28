@@ -1,14 +1,14 @@
-use super::report::RtkStatus;
+use super::report::CrunchStatus;
 
 /// A rule mapping a shell command pattern to its Crunch equivalent.
-pub struct RtkRule {
-    pub rtk_cmd: &'static str,
-    /// Original command prefixes to replace with rtk_cmd (longest first for correct matching).
+pub struct CrunchRule {
+    pub crunch_cmd: &'static str,
+    /// Original command prefixes to replace with crunch_cmd (longest first for correct matching).
     pub rewrite_prefixes: &'static [&'static str],
     pub category: &'static str,
     pub savings_pct: f64,
     pub subcmd_savings: &'static [(&'static str, f64)],
-    pub subcmd_status: &'static [(&'static str, RtkStatus)],
+    pub subcmd_status: &'static [(&'static str, CrunchStatus)],
 }
 
 // Patterns ordered to match RULES indices exactly.
@@ -88,9 +88,9 @@ pub const PATTERNS: &[&str] = &[
     r"^yamllint\b",
 ];
 
-pub const RULES: &[RtkRule] = &[
-    RtkRule {
-        rtk_cmd: "crunch git",
+pub const RULES: &[CrunchRule] = &[
+    CrunchRule {
+        crunch_cmd: "crunch git",
         rewrite_prefixes: &["git"],
         category: "Git",
         savings_pct: 70.0,
@@ -102,89 +102,89 @@ pub const RULES: &[RtkRule] = &[
         ],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch gh",
+    CrunchRule {
+        crunch_cmd: "crunch gh",
         rewrite_prefixes: &["gh"],
         category: "GitHub",
         savings_pct: 82.0,
         subcmd_savings: &[("pr", 87.0), ("run", 82.0), ("issue", 80.0)],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch cargo",
+    CrunchRule {
+        crunch_cmd: "crunch cargo",
         rewrite_prefixes: &["cargo"],
         category: "Cargo",
         savings_pct: 80.0,
         subcmd_savings: &[("test", 90.0), ("check", 80.0)],
-        subcmd_status: &[("fmt", RtkStatus::Passthrough)],
+        subcmd_status: &[("fmt", CrunchStatus::Passthrough)],
     },
-    RtkRule {
-        rtk_cmd: "crunch pnpm",
+    CrunchRule {
+        crunch_cmd: "crunch pnpm",
         rewrite_prefixes: &["pnpm"],
         category: "PackageManager",
         savings_pct: 80.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch npm",
+    CrunchRule {
+        crunch_cmd: "crunch npm",
         rewrite_prefixes: &["npm"],
         category: "PackageManager",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch npx",
+    CrunchRule {
+        crunch_cmd: "crunch npx",
         rewrite_prefixes: &["npx"],
         category: "PackageManager",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch read",
+    CrunchRule {
+        crunch_cmd: "crunch read",
         rewrite_prefixes: &["cat", "head", "tail"],
         category: "Files",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch grep",
+    CrunchRule {
+        crunch_cmd: "crunch grep",
         rewrite_prefixes: &["rg", "grep"],
         category: "Files",
         savings_pct: 75.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch ls",
+    CrunchRule {
+        crunch_cmd: "crunch ls",
         rewrite_prefixes: &["ls"],
         category: "Files",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch find",
+    CrunchRule {
+        crunch_cmd: "crunch find",
         rewrite_prefixes: &["find"],
         category: "Files",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
+    CrunchRule {
         // Longest prefixes first for correct matching
-        rtk_cmd: "crunch tsc",
+        crunch_cmd: "crunch tsc",
         rewrite_prefixes: &["pnpm tsc", "npx tsc", "tsc"],
         category: "Build",
         savings_pct: 83.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch lint",
+    CrunchRule {
+        crunch_cmd: "crunch lint",
         rewrite_prefixes: &[
             "npx eslint",
             "pnpm lint",
@@ -198,97 +198,97 @@ pub const RULES: &[RtkRule] = &[
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch prettier",
+    CrunchRule {
+        crunch_cmd: "crunch prettier",
         rewrite_prefixes: &["npx prettier", "pnpm prettier", "prettier"],
         category: "Build",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
+    CrunchRule {
         // "next build" is stripped to "crunch next" — the build subcommand is internal
-        rtk_cmd: "crunch next",
+        crunch_cmd: "crunch next",
         rewrite_prefixes: &["npx next build", "pnpm next build", "next build"],
         category: "Build",
         savings_pct: 87.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch vitest",
+    CrunchRule {
+        crunch_cmd: "crunch vitest",
         rewrite_prefixes: &["pnpm vitest", "npx vitest", "vitest", "jest"],
         category: "Tests",
         savings_pct: 99.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch playwright",
+    CrunchRule {
+        crunch_cmd: "crunch playwright",
         rewrite_prefixes: &["npx playwright", "pnpm playwright", "playwright"],
         category: "Tests",
         savings_pct: 94.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch prisma",
+    CrunchRule {
+        crunch_cmd: "crunch prisma",
         rewrite_prefixes: &["npx prisma", "pnpm prisma", "prisma"],
         category: "Build",
         savings_pct: 88.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch docker",
+    CrunchRule {
+        crunch_cmd: "crunch docker",
         rewrite_prefixes: &["docker"],
         category: "Infra",
         savings_pct: 85.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch kubectl",
+    CrunchRule {
+        crunch_cmd: "crunch kubectl",
         rewrite_prefixes: &["kubectl"],
         category: "Infra",
         savings_pct: 85.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch tree",
+    CrunchRule {
+        crunch_cmd: "crunch tree",
         rewrite_prefixes: &["tree"],
         category: "Files",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch diff",
+    CrunchRule {
+        crunch_cmd: "crunch diff",
         rewrite_prefixes: &["diff"],
         category: "Files",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch curl",
+    CrunchRule {
+        crunch_cmd: "crunch curl",
         rewrite_prefixes: &["curl"],
         category: "Network",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch wget",
+    CrunchRule {
+        crunch_cmd: "crunch wget",
         rewrite_prefixes: &["wget"],
         category: "Network",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch mypy",
+    CrunchRule {
+        crunch_cmd: "crunch mypy",
         rewrite_prefixes: &["python3 -m mypy", "python -m mypy", "mypy"],
         category: "Build",
         savings_pct: 80.0,
@@ -296,24 +296,24 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // Python tooling
-    RtkRule {
-        rtk_cmd: "crunch ruff",
+    CrunchRule {
+        crunch_cmd: "crunch ruff",
         rewrite_prefixes: &["ruff"],
         category: "Python",
         savings_pct: 80.0,
         subcmd_savings: &[("check", 80.0), ("format", 75.0)],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch pytest",
+    CrunchRule {
+        crunch_cmd: "crunch pytest",
         rewrite_prefixes: &["python -m pytest", "pytest"],
         category: "Python",
         savings_pct: 90.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch pip",
+    CrunchRule {
+        crunch_cmd: "crunch pip",
         rewrite_prefixes: &["pip3", "pip", "uv pip"],
         category: "Python",
         savings_pct: 75.0,
@@ -321,16 +321,16 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // Go tooling
-    RtkRule {
-        rtk_cmd: "crunch go",
+    CrunchRule {
+        crunch_cmd: "crunch go",
         rewrite_prefixes: &["go"],
         category: "Go",
         savings_pct: 85.0,
         subcmd_savings: &[("test", 90.0), ("build", 80.0), ("vet", 75.0)],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch golangci-lint",
+    CrunchRule {
+        crunch_cmd: "crunch golangci-lint",
         rewrite_prefixes: &["golangci-lint", "golangci"],
         category: "Go",
         savings_pct: 85.0,
@@ -338,16 +338,16 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // Ruby tooling
-    RtkRule {
-        rtk_cmd: "crunch bundle",
+    CrunchRule {
+        crunch_cmd: "crunch bundle",
         rewrite_prefixes: &["bundle"],
         category: "Ruby",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch rake",
+    CrunchRule {
+        crunch_cmd: "crunch rake",
         rewrite_prefixes: &[
             "bundle exec rails",
             "bundle exec rake",
@@ -360,16 +360,16 @@ pub const RULES: &[RtkRule] = &[
         subcmd_savings: &[("test", 90.0)],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch rspec",
+    CrunchRule {
+        crunch_cmd: "crunch rspec",
         rewrite_prefixes: &["bundle exec rspec", "bin/rspec", "rspec"],
         category: "Tests",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch rubocop",
+    CrunchRule {
+        crunch_cmd: "crunch rubocop",
         rewrite_prefixes: &["bundle exec rubocop", "rubocop"],
         category: "Build",
         savings_pct: 65.0,
@@ -377,8 +377,8 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // AWS CLI
-    RtkRule {
-        rtk_cmd: "crunch aws",
+    CrunchRule {
+        crunch_cmd: "crunch aws",
         rewrite_prefixes: &["aws"],
         category: "Infra",
         savings_pct: 80.0,
@@ -386,8 +386,8 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // PostgreSQL
-    RtkRule {
-        rtk_cmd: "crunch psql",
+    CrunchRule {
+        crunch_cmd: "crunch psql",
         rewrite_prefixes: &["psql"],
         category: "Infra",
         savings_pct: 75.0,
@@ -395,256 +395,256 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     // TOML-filtered commands
-    RtkRule {
-        rtk_cmd: "crunch ansible-playbook",
+    CrunchRule {
+        crunch_cmd: "crunch ansible-playbook",
         rewrite_prefixes: &["ansible-playbook"],
         category: "Infra",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch brew",
+    CrunchRule {
+        crunch_cmd: "crunch brew",
         rewrite_prefixes: &["brew"],
         category: "PackageManager",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch composer",
+    CrunchRule {
+        crunch_cmd: "crunch composer",
         rewrite_prefixes: &["composer"],
         category: "PackageManager",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch df",
+    CrunchRule {
+        crunch_cmd: "crunch df",
         rewrite_prefixes: &["df"],
         category: "System",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch dotnet",
+    CrunchRule {
+        crunch_cmd: "crunch dotnet",
         rewrite_prefixes: &["dotnet"],
         category: "Build",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch du",
+    CrunchRule {
+        crunch_cmd: "crunch du",
         rewrite_prefixes: &["du"],
         category: "System",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch fail2ban-client",
+    CrunchRule {
+        crunch_cmd: "crunch fail2ban-client",
         rewrite_prefixes: &["fail2ban-client"],
         category: "Infra",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch gcloud",
+    CrunchRule {
+        crunch_cmd: "crunch gcloud",
         rewrite_prefixes: &["gcloud"],
         category: "Infra",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch hadolint",
+    CrunchRule {
+        crunch_cmd: "crunch hadolint",
         rewrite_prefixes: &["hadolint"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch helm",
+    CrunchRule {
+        crunch_cmd: "crunch helm",
         rewrite_prefixes: &["helm"],
         category: "Infra",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch iptables",
+    CrunchRule {
+        crunch_cmd: "crunch iptables",
         rewrite_prefixes: &["iptables"],
         category: "Infra",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch make",
+    CrunchRule {
+        crunch_cmd: "crunch make",
         rewrite_prefixes: &["make"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch markdownlint",
+    CrunchRule {
+        crunch_cmd: "crunch markdownlint",
         rewrite_prefixes: &["markdownlint"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch mix",
+    CrunchRule {
+        crunch_cmd: "crunch mix",
         rewrite_prefixes: &["mix"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch mvn",
+    CrunchRule {
+        crunch_cmd: "crunch mvn",
         rewrite_prefixes: &["mvn"],
         category: "Build",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch ping",
+    CrunchRule {
+        crunch_cmd: "crunch ping",
         rewrite_prefixes: &["ping"],
         category: "Network",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch pio",
+    CrunchRule {
+        crunch_cmd: "crunch pio",
         rewrite_prefixes: &["pio"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch poetry",
+    CrunchRule {
+        crunch_cmd: "crunch poetry",
         rewrite_prefixes: &["poetry"],
         category: "Python",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch pre-commit",
+    CrunchRule {
+        crunch_cmd: "crunch pre-commit",
         rewrite_prefixes: &["pre-commit"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch ps",
+    CrunchRule {
+        crunch_cmd: "crunch ps",
         rewrite_prefixes: &["ps"],
         category: "System",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch quarto",
+    CrunchRule {
+        crunch_cmd: "crunch quarto",
         rewrite_prefixes: &["quarto"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch rsync",
+    CrunchRule {
+        crunch_cmd: "crunch rsync",
         rewrite_prefixes: &["rsync"],
         category: "Network",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch shellcheck",
+    CrunchRule {
+        crunch_cmd: "crunch shellcheck",
         rewrite_prefixes: &["shellcheck"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch shopify",
+    CrunchRule {
+        crunch_cmd: "crunch shopify",
         rewrite_prefixes: &["shopify"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch sops",
+    CrunchRule {
+        crunch_cmd: "crunch sops",
         rewrite_prefixes: &["sops"],
         category: "Infra",
         savings_pct: 60.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch swift",
+    CrunchRule {
+        crunch_cmd: "crunch swift",
         rewrite_prefixes: &["swift"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[("test", 90.0)],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch systemctl",
+    CrunchRule {
+        crunch_cmd: "crunch systemctl",
         rewrite_prefixes: &["systemctl"],
         category: "System",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch terraform",
+    CrunchRule {
+        crunch_cmd: "crunch terraform",
         rewrite_prefixes: &["terraform"],
         category: "Infra",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch tofu",
+    CrunchRule {
+        crunch_cmd: "crunch tofu",
         rewrite_prefixes: &["tofu"],
         category: "Infra",
         savings_pct: 70.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch trunk",
+    CrunchRule {
+        crunch_cmd: "crunch trunk",
         rewrite_prefixes: &["trunk"],
         category: "Build",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch uv",
+    CrunchRule {
+        crunch_cmd: "crunch uv",
         rewrite_prefixes: &["uv"],
         category: "Python",
         savings_pct: 65.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    RtkRule {
-        rtk_cmd: "crunch yamllint",
+    CrunchRule {
+        crunch_cmd: "crunch yamllint",
         rewrite_prefixes: &["yamllint"],
         category: "Build",
         savings_pct: 65.0,

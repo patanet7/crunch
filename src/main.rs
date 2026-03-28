@@ -1079,7 +1079,7 @@ enum GoCommands {
 
 /// Crunch-only subcommands that should never fall back to raw execution.
 /// If Clap fails to parse these, show the Clap error directly.
-const RTK_META_COMMANDS: &[&str] = &[
+const CRUNCH_META_COMMANDS: &[&str] = &[
     "gain",
     "discover",
     "learn",
@@ -1105,7 +1105,7 @@ fn run_fallback(parse_error: clap::Error) -> Result<()> {
 
     // Crunch meta-commands should never fall back to raw execution.
     // e.g. `crunch gain --badtypo` should show Clap's error, not try to run `gain` from $PATH.
-    if RTK_META_COMMANDS.contains(&args[0].as_str()) {
+    if CRUNCH_META_COMMANDS.contains(&args[0].as_str()) {
         parse_error.exit();
     }
 
@@ -2645,7 +2645,7 @@ mod tests {
     fn test_meta_commands_reject_bad_flags() {
         // Crunch meta-commands should produce parse errors (not fall through to raw execution).
         // Skip "proxy" because it uses trailing_var_arg (accepts any args by design).
-        for cmd in RTK_META_COMMANDS {
+        for cmd in CRUNCH_META_COMMANDS {
             if matches!(*cmd, "proxy" | "rewrite" | "session") {
                 continue; // these use trailing_var_arg (accept any args by design)
             }

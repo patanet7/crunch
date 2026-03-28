@@ -18,22 +18,22 @@ pub fn run(file1: &Path, file2: &Path, verbose: u8) -> Result<()> {
     let lines1: Vec<&str> = content1.lines().collect();
     let lines2: Vec<&str> = content2.lines().collect();
     let diff = compute_diff(&lines1, &lines2);
-    let mut rtk = String::new();
+    let mut out = String::new();
 
     if diff.added == 0 && diff.removed == 0 {
-        rtk.push_str("[ok] Files are identical");
-        println!("{}", rtk);
+        out.push_str("[ok] Files are identical");
+        println!("{}", out);
         timer.track(
             &format!("diff {} {}", file1.display(), file2.display()),
             "crunch diff",
             &raw,
-            &rtk,
+            &out,
         );
         return Ok(());
     }
 
-    rtk.push_str(&format!("{} → {}\n", file1.display(), file2.display()));
-    rtk.push_str(&format!(
+    out.push_str(&format!("{} → {}\n", file1.display(), file2.display()));
+    out.push_str(&format!(
         "   +{} added, -{} removed, ~{} modified\n\n",
         diff.added, diff.removed, diff.modified
     ));
@@ -42,20 +42,20 @@ pub fn run(file1: &Path, file2: &Path, verbose: u8) -> Result<()> {
     // Only the summary header provides compression; all changes are shown in full.
     for change in &diff.changes {
         match change {
-            DiffChange::Added(ln, c) => rtk.push_str(&format!("+{:4} {}\n", ln, c)),
-            DiffChange::Removed(ln, c) => rtk.push_str(&format!("-{:4} {}\n", ln, c)),
+            DiffChange::Added(ln, c) => out.push_str(&format!("+{:4} {}\n", ln, c)),
+            DiffChange::Removed(ln, c) => out.push_str(&format!("-{:4} {}\n", ln, c)),
             DiffChange::Modified(ln, old, new) => {
-                rtk.push_str(&format!("~{:4} {} → {}\n", ln, old, new))
+                out.push_str(&format!("~{:4} {} → {}\n", ln, old, new))
             }
         }
     }
 
-    print!("{}", rtk);
+    print!("{}", out);
     timer.track(
         &format!("diff {} {}", file1.display(), file2.display()),
         "crunch diff",
         &raw,
-        &rtk,
+        &out,
     );
     Ok(())
 }

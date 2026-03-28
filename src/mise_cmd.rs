@@ -99,7 +99,15 @@ mod tests {
         );
         assert_eq!(
             cmd,
-            vec!["mise", "run", "test", "--", "-x", "--tb=short", "tests/test_build.py"]
+            vec![
+                "mise",
+                "run",
+                "test",
+                "--",
+                "-x",
+                "--tb=short",
+                "tests/test_build.py"
+            ]
         );
     }
 

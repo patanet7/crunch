@@ -101,7 +101,7 @@ pub struct CommandRecord {
     /// UTC timestamp when command was executed
     pub timestamp: DateTime<Utc>,
     /// Crunch command that was executed (e.g., "crunch ls")
-    pub rtk_cmd: String,
+    pub crunch_cmd: String,
     /// Number of tokens saved (input - output)
     pub saved_tokens: usize,
     /// Savings percentage ((saved / input) * 100)
@@ -265,7 +265,7 @@ impl Tracker {
                 id INTEGER PRIMARY KEY,
                 timestamp TEXT NOT NULL,
                 original_cmd TEXT NOT NULL,
-                rtk_cmd TEXT NOT NULL,
+                crunch_cmd TEXT NOT NULL,
                 input_tokens INTEGER NOT NULL,
                 output_tokens INTEGER NOT NULL,
                 saved_tokens INTEGER NOT NULL,
@@ -303,6 +303,14 @@ impl Tracker {
                 [],
             );
         }
+        // Migration: rename rtk_cmd -> crunch_cmd column
+        // SQLite doesn't support ALTER TABLE RENAME COLUMN until 3.25.0,
+        // so check if the old column exists and rename it.
+        let has_old_col: bool = conn.prepare("SELECT rtk_cmd FROM commands LIMIT 0").is_ok();
+        if has_old_col {
+            let _ = conn.execute_batch("ALTER TABLE commands RENAME COLUMN rtk_cmd TO crunch_cmd");
+        }
+
         // Index for fast project-scoped gain queries // added
         let _ = conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_project_path_timestamp ON commands(project_path, timestamp)",
@@ -335,7 +343,7 @@ impl Tracker {
     /// # Arguments
     ///
     /// - `original_cmd`: The standard command (e.g., "ls -la")
-    /// - `rtk_cmd`: The crunch command used (e.g., "crunch ls")
+    /// - `crunch_cmd`: The crunch command used (e.g., "crunch ls")
     /// - `input_tokens`: Estimated tokens from standard command output
     /// - `output_tokens`: Actual tokens from crunch output
     /// - `exec_time_ms`: Execution time in milliseconds
@@ -352,7 +360,7 @@ impl Tracker {
     pub fn record(
         &self,
         original_cmd: &str,
-        rtk_cmd: &str,
+        crunch_cmd: &str,
         input_tokens: usize,
         output_tokens: usize,
         exec_time_ms: u64,
@@ -367,12 +375,12 @@ impl Tracker {
         let project_path = current_project_path_string(); // added: record cwd
 
         self.conn.execute(
-            "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
+            "INSERT INTO commands (timestamp, original_cmd, crunch_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", // added: project_path
             params![
                 Utc::now().to_rfc3339(),
                 original_cmd,
-                rtk_cmd,
+                crunch_cmd,
                 project_path, // added
                 input_tokens as i64,
                 output_tokens as i64,
@@ -573,10 +581,10 @@ impl Tracker {
     ) -> Result<Vec<CommandStats>> {
         let (project_exact, project_glob) = project_filter_params(project_path); // added
         let mut stmt = self.conn.prepare(
-            "SELECT rtk_cmd, COUNT(*), SUM(saved_tokens), AVG(savings_pct), AVG(exec_time_ms)
+            "SELECT crunch_cmd, COUNT(*), SUM(saved_tokens), AVG(savings_pct), AVG(exec_time_ms)
              FROM commands
              WHERE (?1 IS NULL OR project_path = ?1 OR project_path GLOB ?2)
-             GROUP BY rtk_cmd
+             GROUP BY crunch_cmd
              ORDER BY SUM(saved_tokens) DESC
              LIMIT 10", // added: project filter in WHERE
         )?;
@@ -857,7 +865,7 @@ impl Tracker {
     /// let recent = tracker.get_recent(10)?;
     /// for cmd in recent {
     ///     println!("{}: {} saved {:.1}%",
-    ///         cmd.timestamp, cmd.rtk_cmd, cmd.savings_pct);
+    ///         cmd.timestamp, cmd.crunch_cmd, cmd.savings_pct);
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
@@ -874,7 +882,7 @@ impl Tracker {
     ) -> Result<Vec<CommandRecord>> {
         let (project_exact, project_glob) = project_filter_params(project_path); // added
         let mut stmt = self.conn.prepare(
-            "SELECT timestamp, rtk_cmd, saved_tokens, savings_pct
+            "SELECT timestamp, crunch_cmd, saved_tokens, savings_pct
              FROM commands
              WHERE (?1 IS NULL OR project_path = ?1 OR project_path GLOB ?2)
              ORDER BY timestamp DESC
@@ -888,7 +896,7 @@ impl Tracker {
                     timestamp: DateTime::parse_from_rfc3339(&row.get::<_, String>(0)?)
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),
-                    rtk_cmd: row.get(1)?,
+                    crunch_cmd: row.get(1)?,
                     saved_tokens: row.get::<_, i64>(2)? as usize,
                     savings_pct: row.get(3)?,
                 })
@@ -912,8 +920,8 @@ impl Tracker {
     /// Get top N commands by frequency (for telemetry).
     pub fn top_commands(&self, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT rtk_cmd, COUNT(*) as cnt FROM commands
-             GROUP BY rtk_cmd ORDER BY cnt DESC LIMIT ?1",
+            "SELECT crunch_cmd, COUNT(*) as cnt FROM commands
+             GROUP BY crunch_cmd ORDER BY cnt DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |row| {
             let cmd: String = row.get(0)?;
@@ -1081,7 +1089,7 @@ impl TimedExecution {
     /// # Arguments
     ///
     /// - `original_cmd`: Standard command (e.g., "ls -la")
-    /// - `rtk_cmd`: crunch command used (e.g., "crunch ls")
+    /// - `crunch_cmd`: crunch command used (e.g., "crunch ls")
     /// - `input`: Standard command output (for token estimation)
     /// - `output`: crunch command output (for token estimation)
     ///
@@ -1095,7 +1103,7 @@ impl TimedExecution {
     /// let output = "short output";
     /// timer.track("ls -la", "crunch ls", input, output);
     /// ```
-    pub fn track(&self, original_cmd: &str, rtk_cmd: &str, input: &str, output: &str) {
+    pub fn track(&self, original_cmd: &str, crunch_cmd: &str, input: &str, output: &str) {
         let elapsed_ms = self.start.elapsed().as_millis() as u64;
         let input_tokens = estimate_tokens(input);
         let output_tokens = estimate_tokens(output);
@@ -1103,7 +1111,7 @@ impl TimedExecution {
         if let Ok(tracker) = Tracker::new() {
             let _ = tracker.record(
                 original_cmd,
-                rtk_cmd,
+                crunch_cmd,
                 input_tokens,
                 output_tokens,
                 elapsed_ms,
@@ -1120,7 +1128,7 @@ impl TimedExecution {
     /// # Arguments
     ///
     /// - `original_cmd`: Standard command (e.g., "git tag --list")
-    /// - `rtk_cmd`: crunch command used (e.g., "crunch git tag --list")
+    /// - `crunch_cmd`: crunch command used (e.g., "crunch git tag --list")
     ///
     /// # Examples
     ///
@@ -1131,11 +1139,11 @@ impl TimedExecution {
     /// // ... execute streaming command ...
     /// timer.track_passthrough("git tag", "crunch git tag");
     /// ```
-    pub fn track_passthrough(&self, original_cmd: &str, rtk_cmd: &str) {
+    pub fn track_passthrough(&self, original_cmd: &str, crunch_cmd: &str) {
         let elapsed_ms = self.start.elapsed().as_millis() as u64;
         // input_tokens=0, output_tokens=0 won't dilute savings statistics
         if let Ok(tracker) = Tracker::new() {
-            let _ = tracker.record(original_cmd, rtk_cmd, 0, 0, elapsed_ms);
+            let _ = tracker.record(original_cmd, crunch_cmd, 0, 0, elapsed_ms);
         }
     }
 }
@@ -1171,7 +1179,7 @@ pub fn args_display(args: &[OsString]) -> String {
 /// # Arguments
 ///
 /// - `original_cmd`: Standard command (e.g., "ls -la")
-/// - `rtk_cmd`: crunch command used (e.g., "crunch ls")
+/// - `crunch_cmd`: crunch command used (e.g., "crunch ls")
 /// - `input`: Standard command output (for token estimation)
 /// - `output`: crunch command output (for token estimation)
 ///
@@ -1188,12 +1196,12 @@ pub fn args_display(args: &[OsString]) -> String {
 /// ```
 #[deprecated(note = "Use TimedExecution instead")]
 #[allow(dead_code)]
-pub fn track(original_cmd: &str, rtk_cmd: &str, input: &str, output: &str) {
+pub fn track(original_cmd: &str, crunch_cmd: &str, input: &str, output: &str) {
     let input_tokens = estimate_tokens(input);
     let output_tokens = estimate_tokens(output);
 
     if let Ok(tracker) = Tracker::new() {
-        let _ = tracker.record(original_cmd, rtk_cmd, input_tokens, output_tokens, 0);
+        let _ = tracker.record(original_cmd, crunch_cmd, input_tokens, output_tokens, 0);
     }
 }
 
@@ -1239,7 +1247,7 @@ mod tests {
         // Find our specific test record
         let test_record = recent
             .iter()
-            .find(|r| r.rtk_cmd == test_cmd)
+            .find(|r| r.crunch_cmd == test_cmd)
             .expect("Test record not found in recent commands");
 
         assert_eq!(test_record.saved_tokens, 80);
@@ -1271,11 +1279,11 @@ mod tests {
 
         let record1 = recent
             .iter()
-            .find(|r| r.rtk_cmd == cmd1)
+            .find(|r| r.crunch_cmd == cmd1)
             .expect("cmd1 record not found");
         let record2 = recent
             .iter()
-            .find(|r| r.rtk_cmd == cmd2)
+            .find(|r| r.crunch_cmd == cmd2)
             .expect("passthrough record not found");
 
         // Verify cmd1 has 80% savings
@@ -1300,7 +1308,7 @@ mod tests {
         // Verify via DB that record exists
         let tracker = Tracker::new().expect("Failed to create tracker");
         let recent = tracker.get_recent(5).expect("Failed to get recent");
-        assert!(recent.iter().any(|r| r.rtk_cmd == "crunch test"));
+        assert!(recent.iter().any(|r| r.crunch_cmd == "crunch test"));
     }
 
     // 6. TimedExecution::track_passthrough records with 0 tokens
@@ -1314,7 +1322,7 @@ mod tests {
 
         let pt = recent
             .iter()
-            .find(|r| r.rtk_cmd.contains("passthrough"))
+            .find(|r| r.crunch_cmd.contains("passthrough"))
             .expect("Passthrough record not found");
 
         // savings_pct should be 0 for passthrough

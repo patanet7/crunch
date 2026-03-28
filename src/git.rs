@@ -2181,7 +2181,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
     #[test]
     #[ignore] // Integration test: requires git repo
     fn test_branch_creation_not_swallowed() {
-        let branch = "test-rtk-create-branch-regression";
+        let branch = "test-crunch-create-branch-regression";
         // Create branch via run_branch
         run_branch(&[branch.to_string()], 0, &[]).expect("run_branch should succeed");
         // Verify it exists
@@ -2203,7 +2203,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
     #[test]
     #[ignore] // Integration test: requires git repo
     fn test_branch_creation_from_commit() {
-        let branch = "test-rtk-create-from-commit";
+        let branch = "test-crunch-create-from-commit";
         run_branch(&[branch.to_string(), "HEAD".to_string()], 0, &[])
             .expect("run_branch with start-point should succeed");
         let output = Command::new("git")

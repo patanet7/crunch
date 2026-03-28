@@ -7,10 +7,10 @@ use super::rules::{IGNORED_EXACT, IGNORED_PREFIXES, PATTERNS, RULES};
 #[derive(Debug, PartialEq)]
 pub enum Classification {
     Supported {
-        rtk_equivalent: &'static str,
+        crunch_equivalent: &'static str,
         category: &'static str,
         estimated_savings_pct: f64,
-        status: super::report::RtkStatus,
+        status: super::report::CrunchStatus,
     },
     Unsupported {
         base_command: String,
@@ -121,7 +121,7 @@ pub fn classify_command(cmd: &str) -> Classification {
                     .iter()
                     .find(|(s, _)| *s == subcmd)
                     .map(|(_, st)| *st)
-                    .unwrap_or(super::report::RtkStatus::Existing);
+                    .unwrap_or(super::report::CrunchStatus::Existing);
 
                 // Check if this subcommand has custom savings
                 let savings = rule
@@ -133,14 +133,14 @@ pub fn classify_command(cmd: &str) -> Classification {
 
                 (savings, status)
             } else {
-                (rule.savings_pct, super::report::RtkStatus::Existing)
+                (rule.savings_pct, super::report::CrunchStatus::Existing)
             }
         } else {
-            (rule.savings_pct, super::report::RtkStatus::Existing)
+            (rule.savings_pct, super::report::CrunchStatus::Existing)
         };
 
         Classification::Supported {
-            rtk_equivalent: rule.rtk_cmd,
+            crunch_equivalent: rule.crunch_cmd,
             category: rule.category,
             estimated_savings_pct: savings,
             status,
@@ -309,7 +309,7 @@ fn strip_absolute_path(cmd: &str) -> String {
 }
 
 /// Check if a command has CRUNCH_DISABLED= prefix in its env prefix portion.
-pub fn has_rtk_disabled_prefix(cmd: &str) -> bool {
+pub fn has_crunch_disabled_prefix(cmd: &str) -> bool {
     let trimmed = cmd.trim();
     let stripped = ENV_PREFIX.replace(trimmed, "");
     let prefix_len = trimmed.len() - stripped.len();
@@ -371,7 +371,7 @@ pub fn rewrite_command(cmd: &str, excluded: &[String]) -> Option<String> {
     }
 
     // Simple (non-compound) already-Crunch command — return as-is.
-    // For compound commands that start with "rtk" (e.g. "crunch git add . && cargo test"),
+    // For compound commands that start with "crunch" (e.g. "crunch git add . && cargo test"),
     // fall through to rewrite_compound so the remaining segments get rewritten.
     let has_compound = trimmed.contains("&&")
         || trimmed.contains("||")
@@ -426,7 +426,7 @@ fn rewrite_compound(cmd: &str, excluded: &[String]) -> Option<String> {
                 } else {
                     // `|` pipe — rewrite first segment only, pass through the rest unchanged
                     let seg = cmd[seg_start..i].trim();
-                    // Skip rewriting `find`/`fd` in pipes — rtk find outputs a grouped
+                    // Skip rewriting `find`/`fd` in pipes — crunch find outputs a grouped
                     // format that is incompatible with pipe consumers like xargs, grep,
                     // wc, sort, etc. which expect one path per line (#439).
                     let is_pipe_incompatible = seg.starts_with("find ")
@@ -525,7 +525,7 @@ fn rewrite_compound(cmd: &str, excluded: &[String]) -> Option<String> {
     }
 }
 
-/// Rewrite `head -N file` → `rtk read file --max-lines N`.
+/// Rewrite `head -N file` → `crunch read file --max-lines N`.
 /// Returns `None` if the command doesn't match this pattern (fall through to generic logic).
 fn rewrite_head_numeric(cmd: &str) -> Option<String> {
     // Match: head -<digits> <file>  (with optional env prefix)
@@ -551,7 +551,7 @@ fn rewrite_head_numeric(cmd: &str) -> Option<String> {
     None
 }
 
-/// Rewrite `tail` numeric line forms to `rtk read ... --tail-lines N`.
+/// Rewrite `tail` numeric line forms to `crunch read ... --tail-lines N`.
 /// Returns `None` when the pattern is unsupported (caller falls through / skips rewrite).
 fn rewrite_tail_lines(cmd: &str) -> Option<String> {
     lazy_static! {
@@ -599,10 +599,10 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
         return Some(trimmed.to_string());
     }
 
-    // Special case: `head -N file` / `head --lines=N file` → `rtk read file --max-lines N`
-    // Must intercept before generic prefix replacement, which would produce `rtk read -20 file`.
+    // Special case: `head -N file` / `head --lines=N file` → `crunch read file --max-lines N`
+    // Must intercept before generic prefix replacement, which would produce `crunch read -20 file`.
     // Only intercept when head has a flag (-N, --lines=N, -c, etc.); plain `head file` falls
-    // through to the generic rewrite below and produces `rtk read file` as expected.
+    // through to the generic rewrite below and produces `crunch read file` as expected.
     if cmd_part.starts_with("head -") {
         return rewrite_head_numeric(cmd_part).map(|r| format!("{}{}", r, redirect_suffix));
     }
@@ -614,20 +614,22 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     }
 
     // Use classify_command for correct ignore/prefix handling
-    let rtk_equivalent = match classify_command(cmd_part) {
-        Classification::Supported { rtk_equivalent, .. } => {
+    let crunch_equivalent = match classify_command(cmd_part) {
+        Classification::Supported {
+            crunch_equivalent, ..
+        } => {
             // Check if the base command is excluded from rewriting (#243)
             let base = cmd_part.split_whitespace().next().unwrap_or("");
             if excluded.iter().any(|e| e == base) {
                 return None;
             }
-            rtk_equivalent
+            crunch_equivalent
         }
         _ => return None,
     };
 
-    // Find the matching rule (rtk_cmd values are unique across all rules)
-    let rule = RULES.iter().find(|r| r.rtk_cmd == rtk_equivalent)?;
+    // Find the matching rule (crunch_cmd values are unique across all rules)
+    let rule = RULES.iter().find(|r| r.crunch_cmd == crunch_equivalent)?;
 
     // Extract env prefix (sudo, env VAR=val, etc.)
     let stripped_cow = ENV_PREFIX.replace(cmd_part, "");
@@ -636,13 +638,13 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     let cmd_clean = stripped_cow.trim();
 
     // #345: CRUNCH_DISABLED=1 in env prefix → skip rewrite entirely
-    if has_rtk_disabled_prefix(cmd_part) {
+    if has_crunch_disabled_prefix(cmd_part) {
         return None;
     }
 
     // #196: gh with --json/--jq/--template produces structured output that
     // crunch gh would corrupt — skip rewrite so the caller gets raw JSON.
-    if rule.rtk_cmd == "crunch gh" {
+    if rule.crunch_cmd == "crunch gh" {
         let args_lower = cmd_clean.to_lowercase();
         if args_lower.contains("--json")
             || args_lower.contains("--jq")
@@ -656,9 +658,12 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     for &prefix in rule.rewrite_prefixes {
         if let Some(rest) = strip_word_prefix(cmd_clean, prefix) {
             let rewritten = if rest.is_empty() {
-                format!("{}{}{}", env_prefix, rule.rtk_cmd, redirect_suffix)
+                format!("{}{}{}", env_prefix, rule.crunch_cmd, redirect_suffix)
             } else {
-                format!("{}{} {}{}", env_prefix, rule.rtk_cmd, rest, redirect_suffix)
+                format!(
+                    "{}{} {}{}",
+                    env_prefix, rule.crunch_cmd, rest, redirect_suffix
+                )
             };
             return Some(rewritten);
         }
@@ -684,7 +689,7 @@ fn strip_word_prefix<'a>(cmd: &'a str, prefix: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::report::RtkStatus;
+    use super::super::report::CrunchStatus;
     use super::*;
 
     #[test]
@@ -692,10 +697,10 @@ mod tests {
         assert_eq!(
             classify_command("git status"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -705,10 +710,10 @@ mod tests {
         assert_eq!(
             classify_command("git diff --cached"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -718,10 +723,10 @@ mod tests {
         assert_eq!(
             classify_command("cargo test filter::"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 90.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -731,10 +736,10 @@ mod tests {
         assert_eq!(
             classify_command("npx tsc --noEmit"),
             Classification::Supported {
-                rtk_equivalent: "crunch tsc",
+                crunch_equivalent: "crunch tsc",
                 category: "Build",
                 estimated_savings_pct: 83.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -744,10 +749,10 @@ mod tests {
         assert_eq!(
             classify_command("cat src/main.rs"),
             Classification::Supported {
-                rtk_equivalent: "crunch read",
+                crunch_equivalent: "crunch read",
                 category: "Files",
                 estimated_savings_pct: 60.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -807,10 +812,10 @@ mod tests {
         assert_eq!(
             classify_command("GIT_SSH_COMMAND=ssh git push"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -820,10 +825,10 @@ mod tests {
         assert_eq!(
             classify_command("sudo docker ps"),
             Classification::Supported {
-                rtk_equivalent: "crunch docker",
+                crunch_equivalent: "crunch docker",
                 category: "Infra",
                 estimated_savings_pct: 85.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -833,10 +838,10 @@ mod tests {
         assert_eq!(
             classify_command("cargo check"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -846,10 +851,10 @@ mod tests {
         assert_eq!(
             classify_command("cargo check --all-targets"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -859,10 +864,10 @@ mod tests {
         assert_eq!(
             classify_command("cargo fmt"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Passthrough,
+                status: CrunchStatus::Passthrough,
             }
         );
     }
@@ -872,10 +877,10 @@ mod tests {
         assert_eq!(
             classify_command("cargo clippy --all-targets"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 category: "Cargo",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -924,10 +929,10 @@ mod tests {
         assert_eq!(
             classify_command("find . -name foo"),
             Classification::Supported {
-                rtk_equivalent: "crunch find",
+                crunch_equivalent: "crunch find",
                 category: "Files",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -983,10 +988,10 @@ mod tests {
         assert_eq!(
             classify_command("mypy src/"),
             Classification::Supported {
-                rtk_equivalent: "crunch mypy",
+                crunch_equivalent: "crunch mypy",
                 category: "Build",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -996,10 +1001,10 @@ mod tests {
         assert_eq!(
             classify_command("python3 -m mypy --strict"),
             Classification::Supported {
-                rtk_equivalent: "crunch mypy",
+                crunch_equivalent: "crunch mypy",
                 category: "Build",
                 estimated_savings_pct: 80.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -1055,7 +1060,7 @@ mod tests {
             matches!(
                 result,
                 Classification::Supported {
-                    rtk_equivalent: "crunch git",
+                    crunch_equivalent: "crunch git",
                     ..
                 }
             ),
@@ -1095,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rewrite_already_rtk() {
+    fn test_rewrite_already_crunch() {
         assert_eq!(
             rewrite_command("crunch git status", &[]),
             Some("crunch git status".into())
@@ -1204,7 +1209,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_find_pipe_skipped() {
-        // find in a pipe should NOT be rewritten — rtk find output format
+        // find in a pipe should NOT be rewritten — crunch find output format
         // is incompatible with pipe consumers like xargs (#439)
         assert_eq!(
             rewrite_command("find . -name '*.rs' | xargs grep 'fn run'", &[]),
@@ -1239,7 +1244,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_mixed_compound_partial() {
-        // First segment already RTK, second gets rewritten
+        // First segment already crunch, second gets rewritten
         assert_eq!(
             rewrite_command("crunch git add . && cargo test", &[]),
             Some("crunch git add . && crunch cargo test".into())
@@ -1249,7 +1254,7 @@ mod tests {
     // --- #345: CRUNCH_DISABLED ---
 
     #[test]
-    fn test_rewrite_rtk_disabled_curl() {
+    fn test_rewrite_crunch_disabled_curl() {
         assert_eq!(
             rewrite_command("CRUNCH_DISABLED=1 curl https://example.com", &[]),
             None
@@ -1257,12 +1262,12 @@ mod tests {
     }
 
     #[test]
-    fn test_rewrite_rtk_disabled_git_status() {
+    fn test_rewrite_crunch_disabled_git_status() {
         assert_eq!(rewrite_command("CRUNCH_DISABLED=1 git status", &[]), None);
     }
 
     #[test]
-    fn test_rewrite_rtk_disabled_multi_env() {
+    fn test_rewrite_crunch_disabled_multi_env() {
         assert_eq!(
             rewrite_command("FOO=1 CRUNCH_DISABLED=1 git status", &[]),
             None
@@ -1270,7 +1275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rewrite_non_rtk_disabled_env_still_rewrites() {
+    fn test_rewrite_non_crunch_disabled_env_still_rewrites() {
         assert_eq!(
             rewrite_command("SOME_VAR=1 git status", &[]),
             Some("SOME_VAR=1 crunch git status".into())
@@ -1362,7 +1367,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_head_numeric_flag() {
-        // head -20 file → rtk read file --max-lines 20 (not rtk read -20 file)
+        // head -20 file → crunch read file --max-lines 20 (not crunch read -20 file)
         assert_eq!(
             rewrite_command("head -20 src/main.rs", &[]),
             Some("crunch read src/main.rs --max-lines 20".into())
@@ -1379,7 +1384,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_head_no_flag_still_rewrites() {
-        // plain `head file` → `rtk read file` (no numeric flag)
+        // plain `head file` → `crunch read file` (no numeric flag)
         assert_eq!(
             rewrite_command("head src/main.rs", &[]),
             Some("crunch read src/main.rs".into())
@@ -1441,7 +1446,7 @@ mod tests {
         assert!(matches!(
             classify_command("gh release list"),
             Classification::Supported {
-                rtk_equivalent: "crunch gh",
+                crunch_equivalent: "crunch gh",
                 ..
             }
         ));
@@ -1452,7 +1457,7 @@ mod tests {
         assert!(matches!(
             classify_command("cargo install rtk"),
             Classification::Supported {
-                rtk_equivalent: "crunch cargo",
+                crunch_equivalent: "crunch cargo",
                 ..
             }
         ));
@@ -1463,7 +1468,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker run --rm ubuntu bash"),
             Classification::Supported {
-                rtk_equivalent: "crunch docker",
+                crunch_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1474,7 +1479,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker exec -it mycontainer bash"),
             Classification::Supported {
-                rtk_equivalent: "crunch docker",
+                crunch_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1485,7 +1490,7 @@ mod tests {
         assert!(matches!(
             classify_command("docker build -t myimage ."),
             Classification::Supported {
-                rtk_equivalent: "crunch docker",
+                crunch_equivalent: "crunch docker",
                 ..
             }
         ));
@@ -1496,7 +1501,7 @@ mod tests {
         assert!(matches!(
             classify_command("kubectl describe pod mypod"),
             Classification::Supported {
-                rtk_equivalent: "crunch kubectl",
+                crunch_equivalent: "crunch kubectl",
                 ..
             }
         ));
@@ -1507,7 +1512,7 @@ mod tests {
         assert!(matches!(
             classify_command("kubectl apply -f deploy.yaml"),
             Classification::Supported {
-                rtk_equivalent: "crunch kubectl",
+                crunch_equivalent: "crunch kubectl",
                 ..
             }
         ));
@@ -1518,7 +1523,7 @@ mod tests {
         assert!(matches!(
             classify_command("tree src/"),
             Classification::Supported {
-                rtk_equivalent: "crunch tree",
+                crunch_equivalent: "crunch tree",
                 ..
             }
         ));
@@ -1529,7 +1534,7 @@ mod tests {
         assert!(matches!(
             classify_command("diff file1.txt file2.txt"),
             Classification::Supported {
-                rtk_equivalent: "crunch diff",
+                crunch_equivalent: "crunch diff",
                 ..
             }
         ));
@@ -1588,10 +1593,10 @@ mod tests {
         assert!(matches!(
             classify_command("swift test"),
             Classification::Supported {
-                rtk_equivalent: "crunch swift",
+                crunch_equivalent: "crunch swift",
                 category: "Build",
                 estimated_savings_pct: 90.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         ));
     }
@@ -1655,7 +1660,7 @@ mod tests {
         assert!(matches!(
             classify_command("aws s3 ls"),
             Classification::Supported {
-                rtk_equivalent: "crunch aws",
+                crunch_equivalent: "crunch aws",
                 ..
             }
         ));
@@ -1666,7 +1671,7 @@ mod tests {
         assert!(matches!(
             classify_command("aws ec2 describe-instances"),
             Classification::Supported {
-                rtk_equivalent: "crunch aws",
+                crunch_equivalent: "crunch aws",
                 ..
             }
         ));
@@ -1677,7 +1682,7 @@ mod tests {
         assert!(matches!(
             classify_command("psql -U postgres"),
             Classification::Supported {
-                rtk_equivalent: "crunch psql",
+                crunch_equivalent: "crunch psql",
                 ..
             }
         ));
@@ -1688,7 +1693,7 @@ mod tests {
         assert!(matches!(
             classify_command("psql postgres://localhost/mydb"),
             Classification::Supported {
-                rtk_equivalent: "crunch psql",
+                crunch_equivalent: "crunch psql",
                 ..
             }
         ));
@@ -1725,7 +1730,7 @@ mod tests {
         assert!(matches!(
             classify_command("ruff check ."),
             Classification::Supported {
-                rtk_equivalent: "crunch ruff",
+                crunch_equivalent: "crunch ruff",
                 ..
             }
         ));
@@ -1736,7 +1741,7 @@ mod tests {
         assert!(matches!(
             classify_command("ruff format src/"),
             Classification::Supported {
-                rtk_equivalent: "crunch ruff",
+                crunch_equivalent: "crunch ruff",
                 ..
             }
         ));
@@ -1747,7 +1752,7 @@ mod tests {
         assert!(matches!(
             classify_command("pytest tests/"),
             Classification::Supported {
-                rtk_equivalent: "crunch pytest",
+                crunch_equivalent: "crunch pytest",
                 ..
             }
         ));
@@ -1758,7 +1763,7 @@ mod tests {
         assert!(matches!(
             classify_command("python -m pytest tests/"),
             Classification::Supported {
-                rtk_equivalent: "crunch pytest",
+                crunch_equivalent: "crunch pytest",
                 ..
             }
         ));
@@ -1769,7 +1774,7 @@ mod tests {
         assert!(matches!(
             classify_command("pip list"),
             Classification::Supported {
-                rtk_equivalent: "crunch pip",
+                crunch_equivalent: "crunch pip",
                 ..
             }
         ));
@@ -1780,7 +1785,7 @@ mod tests {
         assert!(matches!(
             classify_command("uv pip list"),
             Classification::Supported {
-                rtk_equivalent: "crunch pip",
+                crunch_equivalent: "crunch pip",
                 ..
             }
         ));
@@ -1849,7 +1854,7 @@ mod tests {
         assert!(matches!(
             classify_command("go test ./..."),
             Classification::Supported {
-                rtk_equivalent: "crunch go",
+                crunch_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1860,7 +1865,7 @@ mod tests {
         assert!(matches!(
             classify_command("go build ./..."),
             Classification::Supported {
-                rtk_equivalent: "crunch go",
+                crunch_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1871,7 +1876,7 @@ mod tests {
         assert!(matches!(
             classify_command("go vet ./..."),
             Classification::Supported {
-                rtk_equivalent: "crunch go",
+                crunch_equivalent: "crunch go",
                 ..
             }
         ));
@@ -1882,7 +1887,7 @@ mod tests {
         assert!(matches!(
             classify_command("golangci-lint run"),
             Classification::Supported {
-                rtk_equivalent: "crunch golangci-lint",
+                crunch_equivalent: "crunch golangci-lint",
                 ..
             }
         ));
@@ -1927,7 +1932,7 @@ mod tests {
         assert!(matches!(
             classify_command("vitest run"),
             Classification::Supported {
-                rtk_equivalent: "crunch vitest",
+                crunch_equivalent: "crunch vitest",
                 ..
             }
         ));
@@ -1954,7 +1959,7 @@ mod tests {
         assert!(matches!(
             classify_command("npx prisma migrate dev"),
             Classification::Supported {
-                rtk_equivalent: "crunch prisma",
+                crunch_equivalent: "crunch prisma",
                 ..
             }
         ));
@@ -2091,21 +2096,24 @@ mod tests {
         );
     }
 
-    // --- All RULES have non-empty rtk_cmd and at least one rewrite_prefix ---
+    // --- All RULES have non-empty crunch_cmd and at least one rewrite_prefix ---
 
     #[test]
-    fn test_all_rules_have_valid_rtk_cmd() {
+    fn test_all_rules_have_valid_crunch_cmd() {
         for rule in RULES {
-            assert!(!rule.rtk_cmd.is_empty(), "Rule with empty rtk_cmd found");
             assert!(
-                rule.rtk_cmd.starts_with("crunch "),
-                "rtk_cmd '{}' must start with 'rtk '",
-                rule.rtk_cmd
+                !rule.crunch_cmd.is_empty(),
+                "Rule with empty crunch_cmd found"
+            );
+            assert!(
+                rule.crunch_cmd.starts_with("crunch "),
+                "crunch_cmd '{}' must start with 'crunch '",
+                rule.crunch_cmd
             );
             assert!(
                 !rule.rewrite_prefixes.is_empty(),
                 "Rule '{}' has no rewrite_prefixes",
-                rule.rtk_cmd
+                rule.crunch_cmd
             );
         }
     }
@@ -2201,17 +2209,17 @@ mod tests {
     // --- #508: CRUNCH_DISABLED detection helpers ---
 
     #[test]
-    fn test_has_rtk_disabled_prefix() {
-        assert!(has_rtk_disabled_prefix("CRUNCH_DISABLED=1 git status"));
-        assert!(has_rtk_disabled_prefix(
+    fn test_has_crunch_disabled_prefix() {
+        assert!(has_crunch_disabled_prefix("CRUNCH_DISABLED=1 git status"));
+        assert!(has_crunch_disabled_prefix(
             "FOO=1 CRUNCH_DISABLED=1 cargo test"
         ));
-        assert!(has_rtk_disabled_prefix(
+        assert!(has_crunch_disabled_prefix(
             "CRUNCH_DISABLED=true git log --oneline"
         ));
-        assert!(!has_rtk_disabled_prefix("git status"));
-        assert!(!has_rtk_disabled_prefix("crunch git status"));
-        assert!(!has_rtk_disabled_prefix("SOME_VAR=1 git status"));
+        assert!(!has_crunch_disabled_prefix("git status"));
+        assert!(!has_crunch_disabled_prefix("crunch git status"));
+        assert!(!has_crunch_disabled_prefix("SOME_VAR=1 git status"));
     }
 
     #[test]
@@ -2234,10 +2242,10 @@ mod tests {
         assert_eq!(
             classify_command("/usr/bin/grep -rni pattern"),
             Classification::Supported {
-                rtk_equivalent: "crunch grep",
+                crunch_equivalent: "crunch grep",
                 category: "Files",
                 estimated_savings_pct: 75.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2247,10 +2255,10 @@ mod tests {
         assert_eq!(
             classify_command("/bin/ls -la"),
             Classification::Supported {
-                rtk_equivalent: "crunch ls",
+                crunch_equivalent: "crunch ls",
                 category: "Files",
                 estimated_savings_pct: 65.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2260,10 +2268,10 @@ mod tests {
         assert_eq!(
             classify_command("/usr/local/bin/git status"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2274,10 +2282,10 @@ mod tests {
         assert_eq!(
             classify_command("/usr/bin/find ."),
             Classification::Supported {
-                rtk_equivalent: "crunch find",
+                crunch_equivalent: "crunch find",
                 category: "Files",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2297,10 +2305,10 @@ mod tests {
         assert_eq!(
             classify_command("git -C /tmp status"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2310,10 +2318,10 @@ mod tests {
         assert_eq!(
             classify_command("git --no-pager log -5"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }
@@ -2323,10 +2331,10 @@ mod tests {
         assert_eq!(
             classify_command("git --git-dir /tmp/.git status"),
             Classification::Supported {
-                rtk_equivalent: "crunch git",
+                crunch_equivalent: "crunch git",
                 category: "Git",
                 estimated_savings_pct: 70.0,
-                status: RtkStatus::Existing,
+                status: CrunchStatus::Existing,
             }
         );
     }

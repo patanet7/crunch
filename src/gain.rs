@@ -125,7 +125,7 @@ pub fn run(
         }
 
         // Lightweight CRUNCH_DISABLED bypass check (best-effort, silent on failure)
-        if let Some(warning) = check_rtk_disabled_bypass() {
+        if let Some(warning) = check_crunch_disabled_bypass() {
             eprintln!("{}", warning.yellow());
             eprintln!();
         }
@@ -229,10 +229,10 @@ pub fn run(
                 println!("──────────────────────────────────────────────────────────");
                 for rec in recent {
                     let time = rec.timestamp.format("%m-%d %H:%M");
-                    let cmd_short = if rec.rtk_cmd.len() > 25 {
-                        format!("{}...", &rec.rtk_cmd[..22])
+                    let cmd_short = if rec.crunch_cmd.len() > 25 {
+                        format!("{}...", &rec.crunch_cmd[..22])
                     } else {
-                        rec.rtk_cmd.clone()
+                        rec.crunch_cmd.clone()
                     };
                     // added: tier indicators by savings level
                     let sign = if rec.savings_pct >= 70.0 {
@@ -621,9 +621,9 @@ fn export_csv(
 /// Lightweight scan of recent Claude Code sessions for CRUNCH_DISABLED= overuse.
 /// Returns a warning string if bypass rate exceeds 10%, None otherwise.
 /// Silently returns None on any error (missing dirs, permission issues, etc.).
-fn check_rtk_disabled_bypass() -> Option<String> {
+fn check_crunch_disabled_bypass() -> Option<String> {
     use crate::discover::provider::{ClaudeProvider, SessionProvider};
-    use crate::discover::registry::has_rtk_disabled_prefix;
+    use crate::discover::registry::has_crunch_disabled_prefix;
 
     let provider = ClaudeProvider;
 
@@ -646,7 +646,7 @@ fn check_rtk_disabled_bypass() -> Option<String> {
 
         for ext_cmd in &extracted {
             total_bash += 1;
-            if has_rtk_disabled_prefix(&ext_cmd.command) {
+            if has_crunch_disabled_prefix(&ext_cmd.command) {
                 bypassed += 1;
             }
         }

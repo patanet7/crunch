@@ -1,6 +1,6 @@
 //! Claude Code Economics: Spending vs Savings Analysis
 //!
-//! Combines ccusage (tokens spent) with rtk tracking (tokens saved) to provide
+//! Combines ccusage (tokens spent) with crunch tracking (tokens saved) to provide
 //! dual-metric economic impact reporting with blended and active cost-per-token.
 
 use anyhow::{Context, Result};
@@ -37,7 +37,7 @@ pub struct PeriodEconomics {
     pub cc_output_tokens: Option<u64>,
     pub cc_cache_create_tokens: Option<u64>,
     pub cc_cache_read_tokens: Option<u64>,
-    // rtk metrics
+    // crunch metrics
     pub rtk_commands: Option<usize>,
     pub rtk_saved_tokens: Option<usize>,
     pub rtk_savings_pct: Option<f64>,
@@ -201,7 +201,7 @@ pub fn run(
 
 // ── Merge Logic ──
 
-fn merge_daily(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<DayStats>) -> Vec<PeriodEconomics> {
+fn merge_daily(cc: Option<Vec<CcusagePeriod>>, savings: Vec<DayStats>) -> Vec<PeriodEconomics> {
     let mut map: HashMap<String, PeriodEconomics> = HashMap::new();
 
     // Insert ccusage data
@@ -214,8 +214,8 @@ fn merge_daily(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<DayStats>) -> Vec<Period
         }
     }
 
-    // Merge rtk data
-    for entry in rtk {
+    // Merge crunch savings data
+    for entry in savings {
         map.entry(entry.date.clone())
             .or_insert_with_key(|k| PeriodEconomics::new(k))
             .set_rtk_from_day(&entry);
@@ -231,7 +231,7 @@ fn merge_daily(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<DayStats>) -> Vec<Period
     result
 }
 
-fn merge_weekly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<WeekStats>) -> Vec<PeriodEconomics> {
+fn merge_weekly(cc: Option<Vec<CcusagePeriod>>, savings: Vec<WeekStats>) -> Vec<PeriodEconomics> {
     let mut map: HashMap<String, PeriodEconomics> = HashMap::new();
 
     // Insert ccusage data (key = ISO Monday "2026-01-20")
@@ -244,9 +244,9 @@ fn merge_weekly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<WeekStats>) -> Vec<Peri
         }
     }
 
-    // Merge rtk data (week_start = legacy Saturday "2026-01-18")
+    // Merge crunch savings data (week_start = legacy Saturday "2026-01-18")
     // Convert Saturday to Monday for alignment
-    for entry in rtk {
+    for entry in savings {
         let monday_key = match convert_saturday_to_monday(&entry.week_start) {
             Some(m) => m,
             None => {
@@ -269,7 +269,7 @@ fn merge_weekly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<WeekStats>) -> Vec<Peri
     result
 }
 
-fn merge_monthly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<MonthStats>) -> Vec<PeriodEconomics> {
+fn merge_monthly(cc: Option<Vec<CcusagePeriod>>, savings: Vec<MonthStats>) -> Vec<PeriodEconomics> {
     let mut map: HashMap<String, PeriodEconomics> = HashMap::new();
 
     // Insert ccusage data
@@ -282,8 +282,8 @@ fn merge_monthly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<MonthStats>) -> Vec<Pe
         }
     }
 
-    // Merge rtk data
-    for entry in rtk {
+    // Merge crunch savings data
+    for entry in savings {
         map.entry(entry.month.clone())
             .or_insert_with_key(|k| PeriodEconomics::new(k))
             .set_rtk_from_month(&entry);
@@ -300,12 +300,12 @@ fn merge_monthly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<MonthStats>) -> Vec<Pe
 
 // ── Helpers ──
 
-/// Convert Saturday week_start (legacy rtk) to ISO Monday
+/// Convert Saturday week_start (legacy) to ISO Monday
 /// Example: "2026-01-18" (Sat) -> "2026-01-20" (Mon)
 fn convert_saturday_to_monday(saturday: &str) -> Option<String> {
     let sat_date = NaiveDate::parse_from_str(saturday, "%Y-%m-%d").ok()?;
 
-    // rtk uses Saturday as week start, ISO uses Monday
+    // legacy uses Saturday as week start, ISO uses Monday
     // Saturday + 2 days = Monday
     let monday = sat_date + chrono::TimeDelta::try_days(2)?;
 
@@ -504,7 +504,7 @@ fn display_summary(tracker: &Tracker, verbose: u8) -> Result<()> {
     println!();
 
     println!("  How it works:");
-    println!("  RTK compresses CLI outputs before they enter Claude's context.");
+    println!("  Crunch compresses CLI outputs before they enter Claude's context.");
     println!("  Savings derived using API price ratios (out=5x, cache_w=1.25x, cache_r=0.1x).");
     println!();
 
@@ -688,28 +688,28 @@ fn export_json(
     if all || daily {
         let cc = ccusage::fetch(Granularity::Daily)
             .context("Failed to fetch ccusage daily data for JSON export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_all_days()
             .context("Failed to load daily token savings for JSON export")?;
-        export.daily = Some(merge_daily(cc, rtk));
+        export.daily = Some(merge_daily(cc, savings));
     }
 
     if all || weekly {
         let cc = ccusage::fetch(Granularity::Weekly)
             .context("Failed to fetch ccusage weekly data for export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_by_week()
             .context("Failed to load weekly token savings for export")?;
-        export.weekly = Some(merge_weekly(cc, rtk));
+        export.weekly = Some(merge_weekly(cc, savings));
     }
 
     if all || monthly {
         let cc = ccusage::fetch(Granularity::Monthly)
             .context("Failed to fetch ccusage monthly data for export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_by_month()
             .context("Failed to load monthly token savings for export")?;
-        let periods = merge_monthly(cc, rtk);
+        let periods = merge_monthly(cc, savings);
         export.totals = Some(compute_totals(&periods));
         export.monthly = Some(periods);
     }
@@ -735,10 +735,10 @@ fn export_csv(
     if all || daily {
         let cc = ccusage::fetch(Granularity::Daily)
             .context("Failed to fetch ccusage daily data for JSON export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_all_days()
             .context("Failed to load daily token savings for JSON export")?;
-        let periods = merge_daily(cc, rtk);
+        let periods = merge_daily(cc, savings);
         for p in periods {
             print_csv_row(&p);
         }
@@ -747,10 +747,10 @@ fn export_csv(
     if all || weekly {
         let cc = ccusage::fetch(Granularity::Weekly)
             .context("Failed to fetch ccusage weekly data for export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_by_week()
             .context("Failed to load weekly token savings for export")?;
-        let periods = merge_weekly(cc, rtk);
+        let periods = merge_weekly(cc, savings);
         for p in periods {
             print_csv_row(&p);
         }
@@ -759,10 +759,10 @@ fn export_csv(
     if all || monthly {
         let cc = ccusage::fetch(Granularity::Monthly)
             .context("Failed to fetch ccusage monthly data for export")?;
-        let rtk = tracker
+        let savings = tracker
             .get_by_month()
             .context("Failed to load monthly token savings for export")?;
-        let periods = merge_monthly(cc, rtk);
+        let periods = merge_monthly(cc, savings);
         for p in periods {
             print_csv_row(&p);
         }
@@ -921,7 +921,7 @@ mod tests {
             },
         }];
 
-        let rtk = vec![MonthStats {
+        let savings = vec![MonthStats {
             month: "2026-01".to_string(),
             commands: 10,
             input_tokens: 800,
@@ -932,7 +932,7 @@ mod tests {
             avg_time_ms: 0,
         }];
 
-        let merged = merge_monthly(Some(cc), rtk);
+        let merged = merge_monthly(Some(cc), savings);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].label, "2026-01");
         assert_eq!(merged[0].cc_cost, Some(12.34));
@@ -961,7 +961,7 @@ mod tests {
 
     #[test]
     fn test_merge_monthly_only_rtk() {
-        let rtk = vec![MonthStats {
+        let savings = vec![MonthStats {
             month: "2026-01".to_string(),
             commands: 10,
             input_tokens: 800,
@@ -972,7 +972,7 @@ mod tests {
             avg_time_ms: 0,
         }];
 
-        let merged = merge_monthly(None, rtk);
+        let merged = merge_monthly(None, savings);
         assert_eq!(merged.len(), 1);
         assert!(merged[0].cc_cost.is_none());
         assert_eq!(merged[0].rtk_commands, Some(10));
@@ -980,7 +980,7 @@ mod tests {
 
     #[test]
     fn test_merge_monthly_sorted() {
-        let rtk = vec![
+        let savings = vec![
             MonthStats {
                 month: "2026-03".to_string(),
                 commands: 5,
@@ -1003,7 +1003,7 @@ mod tests {
             },
         ];
 
-        let merged = merge_monthly(None, rtk);
+        let merged = merge_monthly(None, savings);
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].label, "2026-01");
         assert_eq!(merged[1].label, "2026-03");

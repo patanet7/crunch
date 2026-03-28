@@ -50,17 +50,17 @@ fn docker_ps(_verbose: u8) -> Result<()> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut rtk = String::new();
+    let mut out = String::new();
 
     if stdout.trim().is_empty() {
-        rtk.push_str("[docker] 0 containers");
-        println!("{}", rtk);
-        timer.track("docker ps", "crunch docker ps", &raw, &rtk);
+        out.push_str("[docker] 0 containers");
+        println!("{}", out);
+        timer.track("docker ps", "crunch docker ps", &raw, &out);
         return Ok(());
     }
 
     let count = stdout.lines().count();
-    rtk.push_str(&format!("[docker] {} containers:\n", count));
+    out.push_str(&format!("[docker] {} containers:\n", count));
 
     for line in stdout.lines().take(15) {
         let parts: Vec<&str> = line.split('\t').collect();
@@ -75,9 +75,9 @@ fn docker_ps(_verbose: u8) -> Result<()> {
                 .unwrap_or("");
             let ports = compact_ports(parts.get(4).unwrap_or(&""));
             if ports == "-" {
-                rtk.push_str(&format!("  {} {} ({})\n", id, name, short_image));
+                out.push_str(&format!("  {} {} ({})\n", id, name, short_image));
             } else {
-                rtk.push_str(&format!(
+                out.push_str(&format!(
                     "  {} {} ({}) [{}]\n",
                     id, name, short_image, ports
                 ));
@@ -85,11 +85,11 @@ fn docker_ps(_verbose: u8) -> Result<()> {
         }
     }
     if count > 15 {
-        rtk.push_str(&format!("  ... +{} more", count - 15));
+        out.push_str(&format!("  ... +{} more", count - 15));
     }
 
-    print!("{}", rtk);
-    timer.track("docker ps", "crunch docker ps", &raw, &rtk);
+    print!("{}", out);
+    timer.track("docker ps", "crunch docker ps", &raw, &out);
     Ok(())
 }
 
@@ -116,12 +116,12 @@ fn docker_images(_verbose: u8) -> Result<()> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    let mut rtk = String::new();
+    let mut out = String::new();
 
     if lines.is_empty() {
-        rtk.push_str("[docker] 0 images");
-        println!("{}", rtk);
-        timer.track("docker images", "crunch docker images", &raw, &rtk);
+        out.push_str("[docker] 0 images");
+        println!("{}", out);
+        timer.track("docker images", "crunch docker images", &raw, &out);
         return Ok(());
     }
 
@@ -146,7 +146,7 @@ fn docker_images(_verbose: u8) -> Result<()> {
     } else {
         format!("{:.0}MB", total_size_mb)
     };
-    rtk.push_str(&format!(
+    out.push_str(&format!(
         "[docker] {} images ({})\n",
         lines.len(),
         total_display
@@ -162,15 +162,15 @@ fn docker_images(_verbose: u8) -> Result<()> {
             } else {
                 image.to_string()
             };
-            rtk.push_str(&format!("  {} [{}]\n", short, size));
+            out.push_str(&format!("  {} [{}]\n", short, size));
         }
     }
     if lines.len() > 15 {
-        rtk.push_str(&format!("  ... +{} more", lines.len() - 15));
+        out.push_str(&format!("  ... +{} more", lines.len() - 15));
     }
 
-    print!("{}", rtk);
-    timer.track("docker images", "crunch docker images", &raw, &rtk);
+    print!("{}", out);
+    timer.track("docker images", "crunch docker images", &raw, &out);
     Ok(())
 }
 
@@ -206,13 +206,13 @@ fn docker_logs(args: &[String], _verbose: u8) -> Result<()> {
     }
 
     let analyzed = crate::log_cmd::run_stdin_str(&raw);
-    let rtk = format!("[docker] Logs for {}:\n{}", container, analyzed);
-    println!("{}", rtk);
+    let out = format!("[docker] Logs for {}:\n{}", container, analyzed);
+    println!("{}", out);
     timer.track(
         &format!("docker logs {}", container),
         "crunch docker logs",
         &raw,
-        &rtk,
+        &out,
     );
     Ok(())
 }
@@ -228,7 +228,7 @@ fn kubectl_pods(args: &[String], _verbose: u8) -> Result<()> {
 
     let output = cmd.output().context("Failed to run kubectl get pods")?;
     let raw = String::from_utf8_lossy(&output.stdout).to_string();
-    let mut rtk = String::new();
+    let mut out = String::new();
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -242,17 +242,17 @@ fn kubectl_pods(args: &[String], _verbose: u8) -> Result<()> {
     let json: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
         Err(_) => {
-            rtk.push_str("No pods found");
-            println!("{}", rtk);
-            timer.track("kubectl get pods", "crunch kubectl pods", &raw, &rtk);
+            out.push_str("No pods found");
+            println!("{}", out);
+            timer.track("kubectl get pods", "crunch kubectl pods", &raw, &out);
             return Ok(());
         }
     };
 
     let Some(pods) = json["items"].as_array().filter(|a| !a.is_empty()) else {
-        rtk.push_str("No pods found");
-        println!("{}", rtk);
-        timer.track("kubectl get pods", "crunch kubectl pods", &raw, &rtk);
+        out.push_str("No pods found");
+        println!("{}", out);
+        timer.track("kubectl get pods", "crunch kubectl pods", &raw, &out);
         return Ok(());
     };
     let (mut running, mut pending, mut failed, mut restarts_total) = (0, 0, 0, 0i64);
@@ -308,19 +308,19 @@ fn kubectl_pods(args: &[String], _verbose: u8) -> Result<()> {
         parts.push(format!("{} restarts", restarts_total));
     }
 
-    rtk.push_str(&format!("{} pods: {}\n", pods.len(), parts.join(", ")));
+    out.push_str(&format!("{} pods: {}\n", pods.len(), parts.join(", ")));
     if !issues.is_empty() {
-        rtk.push_str("[warn] Issues:\n");
+        out.push_str("[warn] Issues:\n");
         for issue in issues.iter().take(10) {
-            rtk.push_str(&format!("  {}\n", issue));
+            out.push_str(&format!("  {}\n", issue));
         }
         if issues.len() > 10 {
-            rtk.push_str(&format!("  ... +{} more", issues.len() - 10));
+            out.push_str(&format!("  ... +{} more", issues.len() - 10));
         }
     }
 
-    print!("{}", rtk);
-    timer.track("kubectl get pods", "crunch kubectl pods", &raw, &rtk);
+    print!("{}", out);
+    timer.track("kubectl get pods", "crunch kubectl pods", &raw, &out);
     Ok(())
 }
 
@@ -335,7 +335,7 @@ fn kubectl_services(args: &[String], _verbose: u8) -> Result<()> {
 
     let output = cmd.output().context("Failed to run kubectl get services")?;
     let raw = String::from_utf8_lossy(&output.stdout).to_string();
-    let mut rtk = String::new();
+    let mut out = String::new();
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -349,20 +349,20 @@ fn kubectl_services(args: &[String], _verbose: u8) -> Result<()> {
     let json: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
         Err(_) => {
-            rtk.push_str("No services found");
-            println!("{}", rtk);
-            timer.track("kubectl get svc", "crunch kubectl svc", &raw, &rtk);
+            out.push_str("No services found");
+            println!("{}", out);
+            timer.track("kubectl get svc", "crunch kubectl svc", &raw, &out);
             return Ok(());
         }
     };
 
     let Some(services) = json["items"].as_array().filter(|a| !a.is_empty()) else {
-        rtk.push_str("No services found");
-        println!("{}", rtk);
-        timer.track("kubectl get svc", "crunch kubectl svc", &raw, &rtk);
+        out.push_str("No services found");
+        println!("{}", out);
+        timer.track("kubectl get svc", "crunch kubectl svc", &raw, &out);
         return Ok(());
     };
-    rtk.push_str(&format!("{} services:\n", services.len()));
+    out.push_str(&format!("{} services:\n", services.len()));
 
     for svc in services.iter().take(15) {
         let ns = svc["metadata"]["namespace"].as_str().unwrap_or("-");
@@ -387,7 +387,7 @@ fn kubectl_services(args: &[String], _verbose: u8) -> Result<()> {
                     .collect()
             })
             .unwrap_or_default();
-        rtk.push_str(&format!(
+        out.push_str(&format!(
             "  {}/{} {} [{}]\n",
             ns,
             name,
@@ -396,11 +396,11 @@ fn kubectl_services(args: &[String], _verbose: u8) -> Result<()> {
         ));
     }
     if services.len() > 15 {
-        rtk.push_str(&format!("  ... +{} more", services.len() - 15));
+        out.push_str(&format!("  ... +{} more", services.len() - 15));
     }
 
-    print!("{}", rtk);
-    timer.track("kubectl get svc", "crunch kubectl svc", &raw, &rtk);
+    print!("{}", out);
+    timer.track("kubectl get svc", "crunch kubectl svc", &raw, &out);
     Ok(())
 }
 
@@ -437,13 +437,13 @@ fn kubectl_logs(args: &[String], _verbose: u8) -> Result<()> {
     }
 
     let analyzed = crate::log_cmd::run_stdin_str(&raw);
-    let rtk = format!("Logs for {}:\n{}", pod, analyzed);
-    println!("{}", rtk);
+    let out = format!("Logs for {}:\n{}", pod, analyzed);
+    println!("{}", out);
     timer.track(
         &format!("kubectl logs {}", pod),
         "crunch kubectl logs",
         &raw,
-        &rtk,
+        &out,
     );
     Ok(())
 }
@@ -648,9 +648,9 @@ pub fn run_compose_ps(verbose: u8) -> Result<()> {
         eprintln!("raw docker compose ps:\n{}", raw);
     }
 
-    let rtk = format_compose_ps(&structured);
-    println!("{}", rtk);
-    timer.track("docker compose ps", "crunch docker compose ps", &raw, &rtk);
+    let out = format_compose_ps(&structured);
+    println!("{}", out);
+    timer.track("docker compose ps", "crunch docker compose ps", &raw, &out);
     Ok(())
 }
 
@@ -680,14 +680,14 @@ pub fn run_compose_logs(service: Option<&str>, verbose: u8) -> Result<()> {
         eprintln!("raw docker compose logs:\n{}", raw);
     }
 
-    let rtk = format_compose_logs(&raw);
-    println!("{}", rtk);
+    let out = format_compose_logs(&raw);
+    println!("{}", out);
     let svc_label = service.unwrap_or("all");
     timer.track(
         &format!("docker compose logs {}", svc_label),
         "crunch docker compose logs",
         &raw,
-        &rtk,
+        &out,
     );
     Ok(())
 }
@@ -718,14 +718,14 @@ pub fn run_compose_build(service: Option<&str>, verbose: u8) -> Result<()> {
         eprintln!("raw docker compose build:\n{}", raw);
     }
 
-    let rtk = format_compose_build(&raw);
-    println!("{}", rtk);
+    let out = format_compose_build(&raw);
+    println!("{}", out);
     let svc_label = service.unwrap_or("all");
     timer.track(
         &format!("docker compose build {}", svc_label),
         "crunch docker compose build",
         &raw,
-        &rtk,
+        &out,
     );
     Ok(())
 }

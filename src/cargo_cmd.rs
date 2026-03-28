@@ -901,7 +901,7 @@ fn filter_cargo_clippy(output: &str) -> String {
         if (line.starts_with("warning:") || line.starts_with("warning["))
             || (line.starts_with("error:") || line.starts_with("error["))
         {
-            // Skip summary lines: "warning: `rtk` (bin) generated 5 warnings"
+            // Skip summary lines: "warning: `crunch` (bin) generated 5 warnings"
             if line.contains("generated") && line.contains("warning") {
                 continue;
             }

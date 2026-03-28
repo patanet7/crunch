@@ -8,7 +8,7 @@ The parser infrastructure provides a unified, three-tier parsing system for tool
 - **Tier 2 (Degraded)**: Partial parsing with warnings (fallback regex)
 - **Tier 3 (Passthrough)**: Raw output truncation with error markers
 
-This ensures RTK **never returns false data silently** while maintaining maximum token efficiency.
+This ensures Crunch **never returns false data silently** while maintaining maximum token efficiency.
 
 ## Architecture
 
@@ -101,13 +101,13 @@ pub fn run_vitest(args: &[String], verbose: u8) -> Result<()> {
         ParseResult::Degraded(data, warnings) => {
             if verbose > 0 {
                 for warn in warnings {
-                    eprintln!("[RTK:DEGRADED] {}", warn);
+                    eprintln!("[Crunch:DEGRADED] {}", warn);
                 }
             }
             data.format(mode)
         }
         ParseResult::Passthrough(raw) => {
-            eprintln!("[RTK:PASSTHROUGH] Parser failed, showing truncated output");
+            eprintln!("[Crunch:PASSTHROUGH] Parser failed, showing truncated output");
             raw
         }
     };
@@ -170,8 +170,8 @@ For build tools (next, webpack, vite, cargo, etc.)
 ### Degradation Warnings
 
 ```
-[RTK:DEGRADED] vitest parser: JSON parse failed at line 42, using regex fallback
-[RTK:PASSTHROUGH] playwright parser: Pattern mismatch, showing truncated output
+[Crunch:DEGRADED] vitest parser: JSON parse failed at line 42, using regex fallback
+[Crunch:PASSTHROUGH] playwright parser: Pattern mismatch, showing truncated output
 ```
 
 ## Migration Guide
@@ -263,5 +263,5 @@ fn test_vitest_regex_fallback() {
 
 ### Phase 5: Observability
 - [ ] Extend tracking.db: `parse_tier`, `format_mode`
-- [ ] `rtk parse-health` command
+- [ ] `crunch parse-health` command
 - [ ] Alert if degradation > 10%

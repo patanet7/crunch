@@ -1,6 +1,6 @@
 //! Hook integrity verification via SHA-256.
 //!
-//! RTK installs a PreToolUse hook (`rtk-rewrite.sh`) that auto-approves
+//! Crunch installs a PreToolUse hook (`crunch-rewrite.sh`) that auto-approves
 //! rewritten commands with `permissionDecision: "allow"`. Because this
 //! hook bypasses Claude Code's permission prompts, any unauthorized
 //! modification represents a command injection vector.
@@ -8,9 +8,9 @@
 //! This module provides:
 //! - SHA-256 hash computation and storage at install time
 //! - Runtime verification before command execution
-//! - Manual verification via `rtk verify`
+//! - Manual verification via `crunch verify`
 //!
-//! Reference: SA-2025-RTK-001 (Finding F-01)
+//! Reference: SA-2025-CRUNCH-001 (Finding F-01)
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
@@ -25,11 +25,11 @@ const HASH_FILENAME: &str = ".crunch-hook.sha256";
 pub enum IntegrityStatus {
     /// Hash matches — hook is unmodified since last install/update
     Verified,
-    /// Hash mismatch — hook has been modified outside of `rtk init`
+    /// Hash mismatch — hook has been modified outside of `crunch init`
     Tampered { expected: String, actual: String },
     /// Hook exists but no stored hash (installed before integrity checks)
     NoBaseline,
-    /// Neither hook nor hash file exist (RTK not installed)
+    /// Neither hook nor hash file exist (Crunch not installed)
     NotInstalled,
     /// Hash file exists but hook was deleted
     OrphanedHash,
@@ -56,7 +56,7 @@ fn hash_path(hook_path: &Path) -> PathBuf {
 ///
 /// Format is compatible with `sha256sum -c`:
 /// ```text
-/// <hex_hash>  rtk-rewrite.sh
+/// <hex_hash>  crunch-rewrite.sh
 /// ```
 ///
 /// The hash file is set to read-only (0o444) as a speed bump
@@ -69,7 +69,7 @@ pub fn store_hash(hook_path: &Path) -> Result<()> {
     let filename = hook_path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("rtk-rewrite.sh");
+        .unwrap_or("crunch-rewrite.sh");
 
     let content = format!("{}  {}\n", hash, filename);
 
@@ -185,7 +185,7 @@ pub fn resolve_hook_path() -> Result<PathBuf> {
         .context("Cannot determine home directory. Is $HOME set?")
 }
 
-/// Run integrity check and print results (for `rtk verify` subcommand)
+/// Run integrity check and print results (for `crunch verify` subcommand)
 pub fn run_verify(verbose: u8) -> Result<()> {
     let hook_path = resolve_hook_path()?;
     let hash_file = hash_path(&hook_path);
@@ -241,7 +241,7 @@ pub fn run_verify(verbose: u8) -> Result<()> {
 /// - `OrphanedHash`: warn to stderr, continue
 ///
 /// No env-var bypass is provided — if the hook is legitimately modified,
-/// re-run `rtk init -g --auto-patch` to re-establish the baseline.
+/// re-run `crunch init -g --auto-patch` to re-establish the baseline.
 pub fn runtime_check() -> Result<()> {
     match verify_hook()? {
         IntegrityStatus::Verified | IntegrityStatus::NotInstalled => {
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn test_store_and_verify_ok() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "#!/bin/bash\necho test\n").unwrap();
 
         store_hash(&hook).unwrap();
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn test_verify_detects_tampering() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "#!/bin/bash\necho original\n").unwrap();
 
         store_hash(&hook).unwrap();
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn test_verify_no_baseline() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "#!/bin/bash\necho test\n").unwrap();
 
         // No hash file stored
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn test_verify_not_installed() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         // Don't create hook file
 
         let status = verify_hook_at(&hook).unwrap();
@@ -370,13 +370,13 @@ mod tests {
     #[test]
     fn test_verify_orphaned_hash() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         let hash_file = temp.path().join(".crunch-hook.sha256");
 
         // Create hash but no hook
         fs::write(
             &hash_file,
-            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  rtk-rewrite.sh\n",
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  crunch-rewrite.sh\n",
         )
         .unwrap();
 
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_store_hash_creates_sha256sum_format() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "test content").unwrap();
 
         store_hash(&hook).unwrap();
@@ -396,18 +396,18 @@ mod tests {
         assert!(hash_file.exists());
 
         let content = fs::read_to_string(&hash_file).unwrap();
-        // Format: "<64 hex chars>  rtk-rewrite.sh\n"
-        assert!(content.ends_with("  rtk-rewrite.sh\n"));
+        // Format: "<64 hex chars>  crunch-rewrite.sh\n"
+        assert!(content.ends_with("  crunch-rewrite.sh\n"));
         let parts: Vec<&str> = content.trim().splitn(2, "  ").collect();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0].len(), 64);
-        assert_eq!(parts[1], "rtk-rewrite.sh");
+        assert_eq!(parts[1], "crunch-rewrite.sh");
     }
 
     #[test]
     fn test_store_hash_overwrites_existing() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
 
         fs::write(&hook, "version 1").unwrap();
         store_hash(&hook).unwrap();
@@ -430,7 +430,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "test").unwrap();
 
         store_hash(&hook).unwrap();
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn test_remove_hash() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "test").unwrap();
 
         store_hash(&hook).unwrap();
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn test_remove_hash_not_found() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
 
         let removed = remove_hash(&hook).unwrap();
         assert!(!removed);
@@ -467,11 +467,11 @@ mod tests {
     #[test]
     fn test_invalid_hash_file_rejected() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
-        fs::write(&hash_file, "not-a-valid-hash  rtk-rewrite.sh\n").unwrap();
+        fs::write(&hash_file, "not-a-valid-hash  crunch-rewrite.sh\n").unwrap();
 
         let result = verify_hook_at(&hook);
         assert!(result.is_err(), "Should reject invalid hash format");
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn test_hash_only_no_filename_rejected() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
@@ -501,14 +501,14 @@ mod tests {
     #[test]
     fn test_wrong_separator_rejected() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         let hash_file = temp.path().join(".crunch-hook.sha256");
 
         fs::write(&hook, "test").unwrap();
         // Single space instead of two-space separator
         fs::write(
             &hash_file,
-            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 rtk-rewrite.sh\n",
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 crunch-rewrite.sh\n",
         )
         .unwrap();
 
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_hash_format_compatible_with_sha256sum() {
         let temp = TempDir::new().unwrap();
-        let hook = temp.path().join("rtk-rewrite.sh");
+        let hook = temp.path().join("crunch-rewrite.sh");
         fs::write(&hook, "#!/bin/bash\necho hello\n").unwrap();
 
         store_hash(&hook).unwrap();
@@ -532,6 +532,6 @@ mod tests {
         let parts: Vec<&str> = content.trim().splitn(2, "  ").collect();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0].len(), 64);
-        assert_eq!(parts[1], "rtk-rewrite.sh");
+        assert_eq!(parts[1], "crunch-rewrite.sh");
     }
 }
