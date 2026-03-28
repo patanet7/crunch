@@ -104,6 +104,33 @@ pub fn run(
         print_efficiency_meter(summary.avg_savings_pct);
         println!();
 
+        // Last 24 hours snapshot
+        let since_24h = chrono::Utc::now() - chrono::Duration::hours(24);
+        if let (Ok(cmds_24h), Ok(saved_24h)) = (
+            tracker.count_commands_since(since_24h),
+            tracker.tokens_saved_24h(since_24h),
+        ) {
+            if cmds_24h > 0 {
+                println!("{}", styled("Last 24 Hours", true));
+                println!("{}", "─".repeat(40));
+                print_kpi("Commands", cmds_24h.to_string());
+                print_kpi("Tokens saved", format_tokens(saved_24h as usize));
+                println!();
+            }
+        }
+
+        // Top commands (most frequent)
+        if let Ok(top) = tracker.top_commands(5) {
+            if !top.is_empty() {
+                println!("{}", styled("Most Used Commands", true));
+                println!("{}", "─".repeat(40));
+                for cmd in &top {
+                    println!("  {}", cmd);
+                }
+                println!();
+            }
+        }
+
         // Warn about hook issues that silently kill savings (stderr, not stdout)
         match hook_check::status() {
             hook_check::HookStatus::Missing => {
@@ -498,6 +525,14 @@ struct ExportSummary {
     avg_savings_pct: f64,
     total_time_ms: u64,
     avg_time_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    overall_savings_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lifetime_tokens_saved: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tokens_saved_24h: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_commands: Option<Vec<String>>,
 }
 
 fn export_json(
@@ -512,6 +547,7 @@ fn export_json(
         .get_summary_filtered(project_scope) // changed: use filtered variant
         .context("Failed to load token savings summary from database")?;
 
+    let since_24h = chrono::Utc::now() - chrono::Duration::hours(24);
     let export = ExportData {
         summary: ExportSummary {
             total_commands: summary.total_commands,
@@ -521,6 +557,10 @@ fn export_json(
             avg_savings_pct: summary.avg_savings_pct,
             total_time_ms: summary.total_time_ms,
             avg_time_ms: summary.avg_time_ms,
+            overall_savings_pct: tracker.overall_savings_pct().ok(),
+            lifetime_tokens_saved: tracker.total_tokens_saved().ok(),
+            tokens_saved_24h: tracker.tokens_saved_24h(since_24h).ok(),
+            top_commands: tracker.top_commands(5).ok(),
         },
         daily: if all || daily {
             Some(tracker.get_all_days_filtered(project_scope)?) // changed: use filtered

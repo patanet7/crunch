@@ -906,7 +906,7 @@ impl Tracker {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Count commands since a given timestamp (for telemetry).
+    /// Count commands since a given timestamp (for local analytics).
     pub fn count_commands_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
         let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
         let count: i64 = self.conn.query_row(
@@ -917,7 +917,7 @@ impl Tracker {
         Ok(count)
     }
 
-    /// Get top N commands by frequency (for telemetry).
+    /// Get top N commands by frequency (for local analytics).
     pub fn top_commands(&self, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT crunch_cmd, COUNT(*) as cnt FROM commands
@@ -931,7 +931,7 @@ impl Tracker {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// Get overall savings percentage (for telemetry).
+    /// Get overall savings percentage (for local analytics).
     pub fn overall_savings_pct(&self) -> Result<f64> {
         let (total_input, total_saved): (i64, i64) = self.conn.query_row(
             "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(saved_tokens), 0) FROM commands",
@@ -945,7 +945,7 @@ impl Tracker {
         }
     }
 
-    /// Get total tokens saved across all tracked commands (for telemetry).
+    /// Get total tokens saved across all tracked commands (for local analytics).
     pub fn total_tokens_saved(&self) -> Result<i64> {
         let saved: i64 = self.conn.query_row(
             "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands",
@@ -955,7 +955,7 @@ impl Tracker {
         Ok(saved)
     }
 
-    /// Get tokens saved in the last 24 hours (for telemetry).
+    /// Get tokens saved in the last 24 hours (for local analytics).
     pub fn tokens_saved_24h(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
         let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
         let saved: i64 = self.conn.query_row(
@@ -1433,5 +1433,99 @@ mod tests {
         // We can't assert exact rate because other tests may have added records,
         // but we can verify recovery_rate is between 0 and 100
         assert!(summary.recovery_rate >= 0.0 && summary.recovery_rate <= 100.0);
+    }
+
+    // 14. count_commands_since returns count of commands after a timestamp
+    #[test]
+    fn test_count_commands_since() {
+        let tracker = Tracker::new().expect("Failed to create tracker");
+        let pid = std::process::id();
+
+        // Record a command with a unique identifier
+        let cmd = format!("crunch count_since_test_{}", pid);
+        tracker
+            .record("count_test", &cmd, 100, 20, 10)
+            .expect("Failed to record");
+
+        // Count since 1 hour ago — should include our command
+        let since = chrono::Utc::now() - chrono::Duration::hours(1);
+        let count = tracker
+            .count_commands_since(since)
+            .expect("Failed to count");
+        assert!(count >= 1, "Should find at least 1 command since 1h ago");
+    }
+
+    // 15. top_commands returns most frequent commands
+    #[test]
+    fn test_top_commands() {
+        let tracker = Tracker::new().expect("Failed to create tracker");
+        let pid = std::process::id();
+
+        // Record several commands with the same name
+        let cmd = format!("crunch top_test_{}", pid);
+        for _ in 0..3 {
+            tracker
+                .record("top_test", &cmd, 50, 10, 5)
+                .expect("Failed to record");
+        }
+
+        let top = tracker.top_commands(10).expect("Failed to get top");
+        assert!(!top.is_empty(), "Should return at least one command");
+    }
+
+    // 16. overall_savings_pct returns a percentage between 0 and 100
+    #[test]
+    fn test_overall_savings_pct() {
+        let tracker = Tracker::new().expect("Failed to create tracker");
+
+        // Ensure at least one record exists
+        tracker
+            .record("savings_test", "crunch savings_test", 100, 20, 10)
+            .expect("Failed to record");
+
+        let pct = tracker
+            .overall_savings_pct()
+            .expect("Failed to get savings pct");
+        assert!(
+            (0.0..=100.0).contains(&pct),
+            "Savings pct should be 0-100, got {}",
+            pct
+        );
+    }
+
+    // 17. total_tokens_saved returns non-negative total
+    #[test]
+    fn test_total_tokens_saved() {
+        let tracker = Tracker::new().expect("Failed to create tracker");
+
+        // Ensure at least one record exists
+        tracker
+            .record("saved_test", "crunch saved_test", 200, 40, 10)
+            .expect("Failed to record");
+
+        let saved = tracker
+            .total_tokens_saved()
+            .expect("Failed to get total saved");
+        assert!(saved >= 0, "Total saved should be non-negative");
+    }
+
+    // 18. tokens_saved_24h returns savings within the time window
+    #[test]
+    fn test_tokens_saved_24h() {
+        let tracker = Tracker::new().expect("Failed to create tracker");
+        let pid = std::process::id();
+
+        // Record a command
+        let cmd = format!("crunch saved24h_test_{}", pid);
+        tracker
+            .record("saved24h", &cmd, 100, 20, 10)
+            .expect("Failed to record");
+
+        // Check savings since 1 hour ago
+        let since = chrono::Utc::now() - chrono::Duration::hours(1);
+        let saved = tracker
+            .tokens_saved_24h(since)
+            .expect("Failed to get 24h saved");
+        assert!(saved >= 0, "24h saved should be non-negative");
     }
 }
