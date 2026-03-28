@@ -86,4 +86,46 @@ mod tests {
             err_msg
         );
     }
+
+    #[test]
+    fn test_build_mise_command_preserves_flag_order() {
+        let cmd = build_mise_command(
+            "test",
+            &[
+                "-x".into(),
+                "--tb=short".into(),
+                "tests/test_build.py".into(),
+            ],
+        );
+        assert_eq!(
+            cmd,
+            vec!["mise", "run", "test", "--", "-x", "--tb=short", "tests/test_build.py"]
+        );
+    }
+
+    #[test]
+    fn test_build_mise_command_empty_task() {
+        let cmd = build_mise_command("", &[]);
+        assert_eq!(cmd, vec!["mise", "run", ""]);
+    }
+
+    #[test]
+    fn test_lookup_mise_task_unmapped_tool() {
+        // Any tool not in config should return None
+        assert!(lookup_mise_task("completely_nonexistent_tool_12345").is_none());
+    }
+
+    #[test]
+    fn test_execute_via_mise_error_contains_context() {
+        // Use a known-bad binary path to trigger error
+        let result = execute_via_mise_with_binary("/nonexistent/binary/path", "test", &[], 0);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        // Error should have useful context
+        assert!(
+            err.contains("Failed to execute mise") || err.contains("No such file"),
+            "Error should contain context: {}",
+            err
+        );
+    }
 }

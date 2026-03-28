@@ -2842,4 +2842,11 @@ mod tests {
         let _f = run_mise_or_direct;
         // Just confirming it compiles — actual execution tested via integration
     }
+
+    #[test]
+    fn test_try_mise_route_returns_none_for_unmapped() {
+        // Without any mise config, all tools should return None
+        let result = try_mise_route("nonexistent_xyz", &[], 0);
+        assert!(result.is_none());
+    }
 }
