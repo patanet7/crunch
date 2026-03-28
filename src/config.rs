@@ -33,12 +33,21 @@ pub struct Config {
     pub mise: MiseConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HooksConfig {
     /// Commands to exclude from auto-rewrite (e.g. ["curl", "playwright"]).
     /// Survives `crunch init -g` re-runs since config.toml is user-owned.
-    #[serde(default)]
+    /// Default: ["read", "cat"] — aggressive read filtering strips function bodies.
     pub exclude_commands: Vec<String>,
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            exclude_commands: vec!["read".into(), "cat".into()],
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +104,8 @@ impl Default for FilterConfig {
                 "__pycache__".into(),
                 ".venv".into(),
                 "vendor".into(),
+                ".pytest_cache".into(),
+                ".mypy_cache".into(),
             ],
             ignore_files: vec!["*.lock".into(), "*.min.js".into(), "*.min.css".into()],
         }
@@ -180,7 +191,7 @@ pub fn merge_configs_from_str(global: Config, project_toml_str: &str) -> Result<
         toml::from_str(project_toml_str).context("Failed to parse project config as TOML value")?;
 
     let table = project_value.as_table();
-    let has = |key: &str| table.map_or(false, |t| t.contains_key(key));
+    let has = |key: &str| table.is_some_and(|t| t.contains_key(key));
 
     let mut merged = global;
 
@@ -264,20 +275,21 @@ exclude_commands = ["curl", "gh"]
     }
 
     #[test]
-    fn test_hooks_config_default_empty() {
+    fn test_hooks_config_default_has_read_cat() {
         let config = Config::default();
-        assert!(config.hooks.exclude_commands.is_empty());
+        assert_eq!(config.hooks.exclude_commands, vec!["read", "cat"]);
     }
 
     #[test]
-    fn test_config_without_hooks_section_is_valid() {
+    fn test_config_without_hooks_section_uses_defaults() {
         let toml = r#"
 [tracking]
 enabled = true
 history_days = 90
 "#;
         let config: Config = toml::from_str(toml).expect("valid toml");
-        assert!(config.hooks.exclude_commands.is_empty());
+        // Without a [hooks] section, defaults apply (read + cat excluded)
+        assert_eq!(config.hooks.exclude_commands, vec!["read", "cat"]);
     }
 
     #[test]
@@ -360,6 +372,38 @@ grep_max_results = 50
 "#;
         let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
         assert_eq!(merged.limits.grep_max_results, 50);
+    }
+
+    #[test]
+    fn test_filter_default_ignore_dirs_includes_cache_dirs() {
+        let config = Config::default();
+        assert!(
+            config
+                .filters
+                .ignore_dirs
+                .contains(&".pytest_cache".to_string()),
+            "Default ignore_dirs must include .pytest_cache"
+        );
+        assert!(
+            config
+                .filters
+                .ignore_dirs
+                .contains(&".mypy_cache".to_string()),
+            "Default ignore_dirs must include .mypy_cache"
+        );
+    }
+
+    #[test]
+    fn test_hooks_default_exclude_commands() {
+        let config = Config::default();
+        assert!(
+            config.hooks.exclude_commands.contains(&"read".to_string()),
+            "Default exclude_commands must include 'read'"
+        );
+        assert!(
+            config.hooks.exclude_commands.contains(&"cat".to_string()),
+            "Default exclude_commands must include 'cat'"
+        );
     }
 
     #[test]

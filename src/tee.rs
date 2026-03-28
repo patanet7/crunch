@@ -94,7 +94,7 @@ static CACHED_PROJECT: OnceLock<String> = OnceLock::new();
 
 /// Get the project name, detecting only once per process.
 pub fn cached_project_name() -> &'static str {
-    CACHED_PROJECT.get_or_init(|| detect_project_name())
+    CACHED_PROJECT.get_or_init(detect_project_name)
 }
 
 /// Derive scope from command args. Falls back to "all".
@@ -111,8 +111,8 @@ pub fn detect_scope(args: &[String]) -> String {
     "all".to_string()
 }
 
-/// Build log path: /tmp/crunch/{project}/{tool}-{scope}-{timestamp}.log
-pub fn build_log_path(project: &str, tool: &str, scope: &str) -> PathBuf {
+/// Build log path using a custom base directory.
+pub fn build_log_path_with_base(base: &str, project: &str, tool: &str, scope: &str) -> PathBuf {
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let filename = format!(
         "{}-{}-{}.log",
@@ -120,9 +120,22 @@ pub fn build_log_path(project: &str, tool: &str, scope: &str) -> PathBuf {
         sanitize_slug(scope),
         timestamp
     );
-    PathBuf::from("/tmp/crunch")
+    PathBuf::from(base)
         .join(sanitize_slug(project))
         .join(filename)
+}
+
+/// Build log path: {base_dir}/{project}/{tool}-{scope}-{timestamp}.log
+/// Uses `[tee] directory` from config if set, otherwise defaults to `/tmp/crunch`.
+pub fn build_log_path(project: &str, tool: &str, scope: &str) -> PathBuf {
+    let config = crate::config::cached_config();
+    let base = config
+        .tee
+        .directory
+        .as_deref()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/tmp/crunch".to_string());
+    build_log_path_with_base(&base, project, tool, scope)
 }
 
 /// Write raw output to project-scoped tee file.
@@ -419,6 +432,26 @@ pytest = { enabled = true }
         let path = PathBuf::from("/tmp/crunch/myproject/pytest-test_build-20260327-143012.log");
         let hint = format_hint(&path);
         assert!(hint.contains("/tmp/crunch/myproject/pytest-test_build-20260327-143012.log"));
+    }
+
+    #[test]
+    fn test_build_log_path_uses_custom_directory() {
+        let path = build_log_path_with_base("/var/log/crunch", "myproject", "pytest", "test_build");
+        let path_str = path.to_string_lossy();
+        assert!(
+            path_str.starts_with("/var/log/crunch/myproject/"),
+            "Should use custom base dir, got: {}",
+            path_str
+        );
+        assert!(path_str.contains("pytest-test_build-"));
+        assert!(path_str.ends_with(".log"));
+    }
+
+    #[test]
+    fn test_build_log_path_default_base() {
+        let path = build_log_path_with_base("/tmp/crunch", "proj", "git", "all");
+        let path_str = path.to_string_lossy();
+        assert!(path_str.starts_with("/tmp/crunch/proj/"));
     }
 
     #[test]
