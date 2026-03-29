@@ -1,6 +1,9 @@
+pub(super) mod classify;
+pub(super) mod env_wrap;
 pub mod provider;
 pub mod registry;
 mod report;
+pub(super) mod rewrite;
 pub mod rules;
 
 use anyhow::Result;
