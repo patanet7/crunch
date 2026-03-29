@@ -47,8 +47,12 @@ fn cleanup_old_files(dir: &std::path::Path, max_files: usize) {
         return;
     }
 
-    // Sort by filename (which starts with epoch timestamp = chronological)
-    entries.sort_by_key(|e| e.file_name());
+    // Sort by modification time (oldest first) for true chronological rotation
+    entries.sort_by_key(|e| {
+        e.metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
 
     let to_remove = entries.len() - max_files;
     for entry in entries.iter().take(to_remove) {
@@ -311,6 +315,41 @@ mod tests {
             let filename = format!("{:010}_{}.log", 1000000 + i, "test");
             assert!(dir.join(&filename).exists());
         }
+    }
+
+    #[test]
+    fn test_cleanup_rotates_by_mtime_not_filename() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let dir = tmpdir.path();
+
+        // Create 20 "ruff" logs first (they'll have older mtime)
+        for i in 0..20 {
+            let filename = format!("ruff-check-{:04}.log", i);
+            fs::write(dir.join(&filename), "ruff content").unwrap();
+        }
+
+        // Small sleep so the cargo log has a strictly newer mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Create 1 "cargo" log (newest by mtime, but sorts before "ruff" alphabetically)
+        let cargo_log = dir.join("cargo_test-all-20260328.log");
+        fs::write(&cargo_log, "cargo content").unwrap();
+
+        // 21 files, max 20 — the oldest ruff log should be deleted,
+        // NOT the cargo log (which would be deleted under alphabetical sort)
+        cleanup_old_files(dir, 20);
+
+        assert!(
+            cargo_log.exists(),
+            "Newest file (cargo) must survive rotation even though it sorts first alphabetically"
+        );
+
+        let remaining: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
+            .collect();
+        assert_eq!(remaining.len(), 20);
     }
 
     #[test]
