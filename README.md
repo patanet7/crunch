@@ -178,7 +178,8 @@ mypy = "typecheck"
 
 [tee]
 enabled = true
-path = "/tmp/crunch/{project}/{tool}-{scope}-{timestamp}.log"
+mode = "always"           # always | failures | never
+# directory = "/custom/path"  # default: /tmp/crunch
 
 [tee.overrides]
 git = { enabled = false }
@@ -188,7 +189,7 @@ ls = { enabled = false }
 exclude_commands = ["read", "cat"]
 
 [filters]
-ignore_dirs = [".git", "node_modules", "__pycache__", ".venv", "target", ".pytest_cache", ".mypy_cache"]
+ignore_dirs = [".git", "node_modules", "target", "__pycache__", ".venv", "vendor", ".pytest_cache", ".mypy_cache"]
 ignore_files = ["*.lock", "*.min.js", "*.min.css"]
 
 [display]
@@ -196,19 +197,57 @@ colors = true
 max_width = 120
 ```
 
-### Per-project config example
+### Per-project config (`.crunch.toml`)
 
+Drop a `.crunch.toml` in any project root to customize crunch for that project. Settings merge over global config key-by-key.
+
+**Python project with mise:**
 ```toml
-# .crunch.toml (in project root)
-
+# .crunch.toml
 [mise]
 pytest = "test"
 ruff = "lint"
 mypy = "typecheck"
 
-[tee.overrides]
-cargo = { enabled = true }
+[filters]
+ignore_dirs = [".git", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"]
 ```
+
+**Rust project:**
+```toml
+# .crunch.toml
+[filters]
+ignore_dirs = [".git", "target"]
+
+[tee.overrides]
+git = { enabled = false }
+```
+
+**Node/TypeScript project:**
+```toml
+# .crunch.toml
+[mise]
+vitest = "test"
+tsc = "typecheck"
+prettier = "format"
+
+[filters]
+ignore_dirs = [".git", "node_modules", ".next", "dist", "coverage"]
+ignore_files = ["*.lock", "*.min.js", "*.min.css"]
+```
+
+**Monorepo with custom tee directory:**
+```toml
+# .crunch.toml
+[tee]
+directory = "/tmp/crunch-myproject"
+max_files = 50
+
+[filters]
+ignore_dirs = [".git", "node_modules", "target", "dist", ".turbo"]
+```
+
+No `.crunch.toml` means crunch uses global config (or defaults) — identical to vanilla RTK behavior.
 
 ### Tee logging config
 
@@ -228,10 +267,12 @@ Every command's raw output is saved to disk before parsing. The compressed summa
 
 | Outcome | Summary example | Log path shown? |
 |---------|----------------|-----------------|
-| Clean pass | `Pytest: 12 passed` | No |
+| Clean pass | `Pytest: 12 passed` | Yes (mode: always) |
 | Warnings | `Ruff: 3 warnings (2 fixable)` | Yes |
 | Failures | `Pytest: 10 passed, 2 failed` | Yes |
 | Crash/error | `Mypy: exited 2` | Yes |
+
+Set `mode = "failures"` in `[tee]` to only show log paths on non-zero exit.
 
 Tee defaults to **on** for all tools. Disable per-tool via `[tee.overrides]`:
 
@@ -241,7 +282,7 @@ git = { enabled = false }    # already in git history
 ls = { enabled = false }     # not worth logging
 ```
 
-Logs are cleaned on `/tmp` reboot cycle (OS handles it), or manually with `crunch logs clean`.
+Logs are cleaned on `/tmp` reboot cycle (OS handles it). Crunch also auto-rotates to keep at most 20 log files per project.
 
 ## Supported Tools
 
