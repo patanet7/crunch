@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # crunch-hook-version: 3
 # Crunch Claude Code hook — rewrites commands to use crunch for token savings.
-# Requires: crunch >= 0.23.0, jq
+# Requires: crunch, jq
 #
 # This is a thin delegating hook: all rewrite logic lives in `crunch rewrite`,
 # which is the single source of truth (src/discover/registry.rs).
@@ -23,17 +23,10 @@ if ! command -v crunch &>/dev/null; then
   exit 0
 fi
 
-# Version guard: crunch rewrite was added in 0.23.0.
-# Older binaries: warn once and exit cleanly (no silent failure).
-CRUNCH_VERSION=$(crunch --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-if [ -n "$CRUNCH_VERSION" ]; then
-  MAJOR=$(echo "$CRUNCH_VERSION" | cut -d. -f1)
-  MINOR=$(echo "$CRUNCH_VERSION" | cut -d. -f2)
-  # Require >= 0.23.0
-  if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -lt 23 ]; then
-    echo "[crunch] WARNING: crunch $CRUNCH_VERSION is too old (need >= 0.23.0). Upgrade: cargo install crunch" >&2
-    exit 0
-  fi
+# Verify crunch rewrite subcommand is available.
+if ! crunch rewrite --help &>/dev/null; then
+  echo "[crunch] WARNING: 'crunch rewrite' not available. Upgrade crunch." >&2
+  exit 0
 fi
 
 INPUT=$(cat)
