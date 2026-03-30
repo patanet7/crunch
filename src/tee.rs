@@ -176,27 +176,10 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
         std::fs::create_dir_all(parent).ok()?;
     }
 
-    // Safe truncation at char boundary
+    // Tail-biased truncation: keep head (10%) + tail (90%) with gap marker.
+    // Pytest summary/failures are at the tail — preserving them is critical.
     let max_file_size = config.max_file_size;
-    let end = if max_file_size >= raw.len() {
-        raw.len()
-    } else {
-        let mut end = max_file_size;
-        while end > 0 && !raw.is_char_boundary(end) {
-            end -= 1;
-        }
-        end
-    };
-
-    let content = if end < raw.len() {
-        format!(
-            "{}\n\n--- truncated at {} bytes ---",
-            &raw[..end],
-            max_file_size
-        )
-    } else {
-        raw.to_string()
-    };
+    let content = truncate_tail_biased(raw, max_file_size);
 
     std::fs::write(&log_path, content).ok()?;
 
@@ -205,6 +188,80 @@ pub fn tee_raw_scoped(raw: &str, tool: &str, args: &[String], exit_code: i32) ->
     }
 
     Some(log_path)
+}
+
+/// Truncate large output using a tail-biased strategy: 10% head + 90% tail.
+///
+/// Test frameworks (pytest, cargo test, go test) put the summary and failure
+/// details at the END of output. Head-only truncation discards the most
+/// important part. This function keeps the beginning (session starts, collection)
+/// AND the end (failures, summary) with a gap marker in the middle.
+fn truncate_tail_biased(raw: &str, max_size: usize) -> String {
+    if raw.len() <= max_size {
+        return raw.to_string();
+    }
+
+    // Budget for the gap marker. The actual marker includes a dynamic byte count,
+    // so we add 20 bytes of headroom beyond the static template.
+    let gap_len = "\n\n--- truncated: 000000000 bytes omitted ---\n\n".len();
+
+    // Need at least enough budget for gap + some content
+    if max_size < gap_len + 200 {
+        // Too small for split strategy — just keep tail
+        let start = snap_to_char_boundary(raw, raw.len().saturating_sub(max_size));
+        return format!("--- truncated: start omitted ---\n{}", &raw[start..]);
+    }
+
+    let budget = max_size - gap_len;
+    let head_budget = budget / 10; // 10% for head
+    let tail_budget = budget - head_budget; // 90% for tail
+
+    // Find safe boundaries (char boundary + snap to line boundary)
+    let head_end = snap_to_line_end(raw, head_budget);
+    let tail_start_byte = raw.len().saturating_sub(tail_budget);
+    let tail_start = snap_to_line_start(raw, tail_start_byte);
+
+    let omitted = tail_start.saturating_sub(head_end);
+
+    format!(
+        "{}\n\n--- truncated: {} bytes omitted ---\n\n{}",
+        &raw[..head_end],
+        omitted,
+        &raw[tail_start..]
+    )
+}
+
+/// Find the nearest char boundary at or after `pos`.
+fn snap_to_char_boundary(s: &str, pos: usize) -> usize {
+    let mut p = pos;
+    while p < s.len() && !s.is_char_boundary(p) {
+        p += 1;
+    }
+    p
+}
+
+/// Find the end of the last complete line within `budget` bytes.
+fn snap_to_line_end(s: &str, budget: usize) -> usize {
+    let mut end = budget.min(s.len());
+    // Snap to char boundary first to avoid panic on s[..end] with multi-byte UTF-8
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    // Walk backwards to find a newline
+    match s[..end].rfind('\n') {
+        Some(pos) => pos + 1, // include the newline
+        None => end,          // no newline found, use full budget
+    }
+}
+
+/// Find the start of the first complete line at or after `pos`.
+fn snap_to_line_start(s: &str, pos: usize) -> usize {
+    let p = snap_to_char_boundary(s, pos);
+    // Walk forward to find a newline, then start after it
+    match s[p..].find('\n') {
+        Some(offset) => p + offset + 1,
+        None => p,
+    }
 }
 
 /// Convenience: tee + format hint for project-scoped logs.
@@ -491,6 +548,81 @@ pytest = { enabled = true }
         let path = build_log_path_with_base("/tmp/crunch", "proj", "git", "all");
         let path_str = path.to_string_lossy();
         assert!(path_str.starts_with("/tmp/crunch/proj/"));
+    }
+
+    // ── Phase 5: Tail-biased truncation tests ──
+
+    #[test]
+    fn test_truncate_small_output_unchanged() {
+        let raw = "short output\nsummary: 5 passed";
+        let result = truncate_tail_biased(raw, 1_048_576);
+        assert_eq!(result, raw);
+    }
+
+    #[test]
+    fn test_truncate_preserves_tail() {
+        // Create output where the summary is at the very end
+        let header = "=== test session starts ===\n".repeat(100); // ~2800 bytes
+        let middle = "tests/test_foo.py .....\n".repeat(500); // ~11500 bytes
+        let summary = "=== 500 passed in 5.00s ===\n";
+        let raw = format!("{}{}{}", header, middle, summary);
+
+        // Truncate to 5000 bytes
+        let result = truncate_tail_biased(&raw, 5000);
+
+        assert!(
+            result.contains("500 passed"),
+            "Summary must be preserved in tail, got: ...{}",
+            &result[result.len().saturating_sub(200)..]
+        );
+        assert!(result.contains("truncated"));
+        assert!(result.len() <= 5200); // some slack for gap marker
+    }
+
+    #[test]
+    fn test_truncate_preserves_head() {
+        let header = "=== test session starts ===\ncollected 100 items\n";
+        let middle = "x".repeat(100_000);
+        let summary = "\n=== 100 passed in 10.00s ===\n";
+        let raw = format!("{}{}{}", header, middle, summary);
+
+        let result = truncate_tail_biased(&raw, 5000);
+
+        assert!(
+            result.contains("test session starts"),
+            "Head must be preserved: {}",
+            &result[..200.min(result.len())]
+        );
+        assert!(result.contains("100 passed"), "Tail must be preserved");
+    }
+
+    #[test]
+    fn test_truncate_utf8_safety() {
+        // Create output with multi-byte UTF-8 chars near truncation boundary
+        let header = "header\n";
+        let emoji_line = "test 🎉 passed\n".repeat(10000); // lots of 4-byte emojis
+        let summary = "=== 5 passed in 0.50s ===\n";
+        let raw = format!("{}{}{}", header, emoji_line, summary);
+
+        let result = truncate_tail_biased(&raw, 5000);
+        // Should not panic and should be valid UTF-8
+        assert!(result.is_ascii() || !result.is_empty());
+        assert!(
+            result.contains("5 passed"),
+            "Summary preserved: {}",
+            &result[result.len().saturating_sub(100)..]
+        );
+    }
+
+    #[test]
+    fn test_truncate_gap_marker_present() {
+        let raw = "a\n".repeat(100_000);
+        let result = truncate_tail_biased(&raw, 5000);
+        assert!(
+            result.contains("truncated") && result.contains("omitted"),
+            "Gap marker must be present: {}",
+            &result[..500.min(result.len())]
+        );
     }
 
     #[test]
