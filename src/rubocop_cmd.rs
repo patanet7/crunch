@@ -50,7 +50,7 @@ struct RubocopSummary {
 
 // ── Public entry point ───────────────────────────────────────────────────────
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = ruby_exec("rubocop");
@@ -111,10 +111,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     );
 
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
 // ── JSON filtering ───────────────────────────────────────────────────────────

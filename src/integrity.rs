@@ -186,7 +186,7 @@ pub fn resolve_hook_path() -> Result<PathBuf> {
 }
 
 /// Run integrity check and print results (for `crunch verify` subcommand)
-pub fn run_verify(verbose: u8) -> Result<()> {
+pub fn run_verify(verbose: u8) -> Result<i32> {
     let hook_path = resolve_hook_path()?;
     let hash_file = hash_path(&hook_path);
 
@@ -213,7 +213,7 @@ pub fn run_verify(verbose: u8) -> Result<()> {
             eprintln!();
             eprintln!("  To restore: crunch init -g --auto-patch");
             eprintln!("  To inspect: cat {}", hook_path.display());
-            std::process::exit(1);
+            return Ok(1);
         }
         IntegrityStatus::NoBaseline => {
             println!("WARN  no baseline hash found");
@@ -230,7 +230,7 @@ pub fn run_verify(verbose: u8) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Runtime integrity gate. Called at startup for operational commands.
@@ -242,7 +242,7 @@ pub fn run_verify(verbose: u8) -> Result<()> {
 ///
 /// No env-var bypass is provided — if the hook is legitimately modified,
 /// re-run `crunch init -g --auto-patch` to re-establish the baseline.
-pub fn runtime_check() -> Result<()> {
+pub fn runtime_check() -> Result<i32> {
     match verify_hook()? {
         IntegrityStatus::Verified | IntegrityStatus::NotInstalled => {
             // All good, proceed
@@ -267,7 +267,7 @@ pub fn runtime_check() -> Result<()> {
             eprintln!();
             eprintln!("  To restore:  crunch init -g --auto-patch");
             eprintln!("  To inspect:  crunch verify");
-            std::process::exit(1);
+            return Ok(1);
         }
         IntegrityStatus::OrphanedHash => {
             eprintln!("crunch: warning: hash file exists but hook is missing");
@@ -276,7 +276,7 @@ pub fn runtime_check() -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(0)
 }
 
 #[cfg(test)]

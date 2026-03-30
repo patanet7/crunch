@@ -35,7 +35,7 @@ struct RuffDiagnostic {
 /// Process pre-captured output (e.g. from mise) through the ruff parser.
 /// Handles filtering, tracking, and exit code — everything `run()` does
 /// except executing the command.
-pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) -> Result<()> {
+pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     if verbose > 0 {
@@ -70,13 +70,13 @@ pub fn run_with_output(raw: &str, args: &[String], exit_code: i32, verbose: u8) 
     );
 
     if exit_code != 0 {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     // Detect subcommand: check, format, or version
@@ -153,10 +153,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter ruff check JSON output - group by rule and file

@@ -10,7 +10,7 @@ use crate::tracking;
 use crate::utils::resolved_command;
 use anyhow::{Context, Result};
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("wc");
@@ -33,7 +33,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
             stderr.trim().to_string()
         };
         eprintln!("FAILED: wc {}", msg);
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
     let raw = stdout.to_string();
@@ -50,7 +50,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         &filtered,
     );
 
-    Ok(())
+    Ok(0)
 }
 
 /// Which columns the user requested

@@ -50,7 +50,7 @@ fn detect_formatter_in_dir(args: &[String], dir: &Path) -> String {
     "ruff".to_string()
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     // Detect formatter
@@ -137,10 +137,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter black output - show files that need formatting

@@ -3,7 +3,7 @@ use crate::tracking;
 use crate::utils::{resolved_command, truncate};
 use anyhow::{Context, Result};
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
     let mut cmd = resolved_command("curl");
     cmd.arg("-s"); // Silent mode (no progress bar)
@@ -27,7 +27,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
             stderr.trim().to_string()
         };
         eprintln!("FAILED: curl {}", msg);
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
     let raw = stdout.to_string();
@@ -43,7 +43,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         &filtered,
     );
 
-    Ok(())
+    Ok(0)
 }
 
 fn filter_curl_output(output: &str) -> String {

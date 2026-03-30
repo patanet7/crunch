@@ -3,7 +3,7 @@ use crate::utils::{resolved_command, strip_ansi, tool_exists, truncate};
 use anyhow::{Context, Result};
 use regex::Regex;
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     // Try next directly first, fallback to npx if not found
@@ -43,10 +43,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter Next.js build output - extract routes, bundles, warnings

@@ -78,7 +78,7 @@ fn detect_major_version() -> u32 {
     }
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let version = detect_major_version();
@@ -149,13 +149,11 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     // golangci-lint: exit 0 = clean, exit 1 = lint issues, exit 2+ = config/build error
     // None = killed by signal (OOM, SIGKILL) — always fatal
     match output.status.code() {
-        Some(0) | Some(1) => Ok(()),
-        Some(code) => {
-            std::process::exit(code);
-        }
+        Some(0) | Some(1) => Ok(0),
+        Some(code) => Ok(code),
         None => {
             eprintln!("golangci-lint: killed by signal");
-            std::process::exit(130);
+            Ok(130)
         }
     }
 }

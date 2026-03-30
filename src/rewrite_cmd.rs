@@ -13,7 +13,7 @@ use std::io::Write;
 /// | 1    | (none)   | No Crunch equivalent — hook passes through unchanged.           |
 /// | 2    | (none)   | Deny rule matched — hook defers to Claude Code native deny.  |
 /// | 3    | rewritten| Ask rule matched — hook rewrites but lets Claude Code prompt.|
-pub fn run(cmd: &str) -> anyhow::Result<()> {
+pub fn run(cmd: &str) -> anyhow::Result<i32> {
     let excluded = crate::config::Config::load()
         .map(|c| c.hooks.exclude_commands)
         .unwrap_or_default();
@@ -22,7 +22,7 @@ pub fn run(cmd: &str) -> anyhow::Result<()> {
     let verdict = check_command(cmd);
 
     if verdict == PermissionVerdict::Deny {
-        std::process::exit(2);
+        return Ok(2);
     }
 
     match registry::rewrite_command(cmd, &excluded) {
@@ -30,19 +30,19 @@ pub fn run(cmd: &str) -> anyhow::Result<()> {
             PermissionVerdict::Allow => {
                 print!("{}", rewritten);
                 let _ = std::io::stdout().flush();
-                Ok(())
+                Ok(0)
             }
             PermissionVerdict::Ask => {
                 print!("{}", rewritten);
                 let _ = std::io::stdout().flush();
-                std::process::exit(3);
+                Ok(3)
             }
             PermissionVerdict::Deny => unreachable!(),
         },
         None => {
             // No Crunch equivalent. Exit 1 = passthrough.
             // Claude Code independently evaluates its own ask rules on the original cmd.
-            std::process::exit(1);
+            Ok(1)
         }
     }
 }

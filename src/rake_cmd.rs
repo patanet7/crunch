@@ -46,7 +46,7 @@ fn looks_like_test_path(arg: &str) -> bool {
         || path.contains("_spec.rb")
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let (tool, effective_args) = select_runner(args);
@@ -92,10 +92,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     );
 
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
 #[derive(Debug, PartialEq)]

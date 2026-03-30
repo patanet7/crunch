@@ -166,6 +166,12 @@ fn rewrite_segment_inner(seg: &str, excluded: &[String], depth: u8) -> Option<St
         return rewrite_tail_lines(cmd_part).map(|r| format!("{}{}", r, redirect_suffix));
     }
 
+    // cat with behavior-modifying flags (-n, -A, -b, etc.) → skip rewrite.
+    // Plain `cat file` still rewrites to `crunch read file`.
+    if cmd_part.starts_with("cat -") {
+        return None;
+    }
+
     // Use classify_command for correct ignore/prefix handling
     let crunch_equivalent = match classify_command(cmd_part) {
         Classification::Supported {
@@ -580,6 +586,22 @@ mod tests {
             rewrite_command("cat src/main.rs", &[]),
             Some("crunch read src/main.rs".into())
         );
+    }
+
+    #[test]
+    fn test_rewrite_cat_with_n_flag_skipped() {
+        // cat -n shows line numbers — rewriting to crunch read loses this
+        assert_eq!(rewrite_command("cat -n src/main.rs", &[]), None);
+    }
+
+    #[test]
+    fn test_rewrite_cat_with_show_all_skipped() {
+        assert_eq!(rewrite_command("cat -A src/main.rs", &[]), None);
+    }
+
+    #[test]
+    fn test_rewrite_cat_with_combined_flags_skipped() {
+        assert_eq!(rewrite_command("cat -nb src/main.rs", &[]), None);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use crate::tracking;
 use crate::utils::package_manager_exec;
 use anyhow::{Context, Result};
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = package_manager_exec("prettier");
@@ -40,7 +40,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
             &raw,
             &raw,
         );
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
     let filtered = filter_prettier_output(&raw);
@@ -56,10 +56,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter Prettier output - show only files that need formatting

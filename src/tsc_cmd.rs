@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::collections::HashMap;
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     // Try tsc directly first, fallback to npx if not found
@@ -51,7 +51,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     );
 
     // Preserve tsc exit code for CI/CD compatibility
-    std::process::exit(exit_code);
+    Ok(exit_code)
 }
 
 /// Filter TypeScript compiler output - group errors by file, show every error

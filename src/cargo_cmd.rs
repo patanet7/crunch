@@ -15,7 +15,7 @@ pub enum CargoCommand {
     Nextest,
 }
 
-pub fn run(cmd: CargoCommand, args: &[String], verbose: u8) -> Result<()> {
+pub fn run(cmd: CargoCommand, args: &[String], verbose: u8) -> Result<i32> {
     match cmd {
         CargoCommand::Build => run_build(args, verbose),
         CargoCommand::Test => run_test(args, verbose),
@@ -66,7 +66,12 @@ fn restore_double_dash_with_raw(args: &[String], raw_args: &[String]) -> Vec<Str
 }
 
 /// Generic cargo command runner with filtering
-fn run_cargo_filtered<F>(subcommand: &str, args: &[String], verbose: u8, filter_fn: F) -> Result<()>
+fn run_cargo_filtered<F>(
+    subcommand: &str,
+    args: &[String],
+    verbose: u8,
+    filter_fn: F,
+) -> Result<i32>
 where
     F: Fn(&str) -> String,
 {
@@ -113,33 +118,33 @@ where
     );
 
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
-fn run_build(args: &[String], verbose: u8) -> Result<()> {
+fn run_build(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("build", args, verbose, filter_cargo_build)
 }
 
-fn run_test(args: &[String], verbose: u8) -> Result<()> {
+fn run_test(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("test", args, verbose, filter_cargo_test)
 }
 
-fn run_clippy(args: &[String], verbose: u8) -> Result<()> {
+fn run_clippy(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("clippy", args, verbose, filter_cargo_clippy)
 }
 
-fn run_check(args: &[String], verbose: u8) -> Result<()> {
+fn run_check(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("check", args, verbose, filter_cargo_build)
 }
 
-fn run_install(args: &[String], verbose: u8) -> Result<()> {
+fn run_install(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("install", args, verbose, filter_cargo_install)
 }
 
-fn run_nextest(args: &[String], verbose: u8) -> Result<()> {
+fn run_nextest(args: &[String], verbose: u8) -> Result<i32> {
     run_cargo_filtered("nextest", args, verbose, filter_cargo_nextest)
 }
 
@@ -166,6 +171,7 @@ fn filter_cargo_install(output: &str) -> String {
     let mut replaced_lines: Vec<String> = Vec::new();
     let mut already_installed = false;
     let mut ignored_line = String::new();
+    let mut finished_line: Option<String> = None;
 
     for line in output.lines() {
         let trimmed = line.trim_start();
@@ -180,9 +186,12 @@ fn filter_cargo_install(output: &str) -> String {
             || trimmed.starts_with("Locking")
             || trimmed.starts_with("Updating")
             || trimmed.starts_with("Adding")
-            || trimmed.starts_with("Finished")
             || trimmed.starts_with("Blocking waiting for file lock")
         {
+            continue;
+        }
+        if trimmed.starts_with("Finished") {
+            finished_line = Some(trimmed.to_string());
             continue;
         }
 
@@ -320,6 +329,10 @@ fn filter_cargo_install(output: &str) -> String {
         result.push_str(&format!("\n  {}", line));
     }
 
+    if let Some(f) = finished_line {
+        result.push_str(&format!("\n{}", f));
+    }
+
     result
 }
 
@@ -361,18 +374,22 @@ fn filter_cargo_nextest(output: &str) -> String {
     let mut summary_line = String::new();
     let mut binaries: u32 = 0;
     let mut has_cancel_line = false;
+    let mut finished_line: Option<String> = None;
 
     for line in output.lines() {
         let trimmed = line.trim();
 
-        // Strip compilation noise
+        // Strip compilation noise (keep Finished — useful metadata)
         if trimmed.starts_with("Compiling")
             || trimmed.starts_with("Downloading")
             || trimmed.starts_with("Downloaded")
-            || trimmed.starts_with("Finished")
             || trimmed.starts_with("Locking")
             || trimmed.starts_with("Updating")
         {
+            continue;
+        }
+        if trimmed.starts_with("Finished") {
+            finished_line = Some(trimmed.to_string());
             continue;
         }
 
@@ -500,7 +517,12 @@ fn filter_cargo_nextest(output: &str) -> String {
             } else {
                 format!("{}, {}s", binary_text, duration)
             };
-            return format!("cargo nextest: {} ({})", parts.join(", "), meta);
+            let base = format!("cargo nextest: {} ({})", parts.join(", "), meta);
+            return if let Some(f) = finished_line {
+                format!("{}\n{}", base, f)
+            } else {
+                base
+            };
         }
 
         // With failures - show failure details then summary
@@ -565,6 +587,7 @@ fn filter_cargo_build(output: &str) -> String {
     let mut compiled = 0;
     let mut in_error = false;
     let mut current_error = Vec::new();
+    let mut finished_line: Option<String> = None;
 
     for line in output.lines() {
         if line.trim_start().starts_with("Compiling") || line.trim_start().starts_with("Checking") {
@@ -577,9 +600,9 @@ fn filter_cargo_build(output: &str) -> String {
             continue;
         }
         if line.trim_start().starts_with("Finished") {
+            finished_line = Some(line.trim().to_string());
             continue;
         }
-
         // Detect error/warning blocks
         if line.starts_with("error[") || line.starts_with("error:") {
             // Skip "error: aborting due to" summary lines
@@ -623,7 +646,12 @@ fn filter_cargo_build(output: &str) -> String {
     }
 
     if error_count == 0 && warnings == 0 {
-        return format!("cargo build ({} crates compiled)", compiled);
+        let base = format!("cargo build ({} crates compiled)", compiled);
+        return if let Some(f) = finished_line {
+            format!("{}\n{}", base, f)
+        } else {
+            base
+        };
     }
 
     let mut result = String::new();
@@ -643,6 +671,11 @@ fn filter_cargo_build(output: &str) -> String {
 
     if errors.len() > 15 {
         result.push_str(&format!("\n... +{} more issues\n", errors.len() - 15));
+    }
+
+    if let Some(f) = finished_line {
+        result.push('\n');
+        result.push_str(&f);
     }
 
     result.trim().to_string()
@@ -752,14 +785,18 @@ fn filter_cargo_test(output: &str) -> String {
     let mut summary_lines: Vec<String> = Vec::new();
     let mut in_failure_section = false;
     let mut current_failure = Vec::new();
+    let mut finished_line: Option<String> = None;
 
     for line in output.lines() {
-        // Skip compilation lines
+        // Skip compilation lines (keep Finished — useful metadata)
         if line.trim_start().starts_with("Compiling")
             || line.trim_start().starts_with("Downloading")
             || line.trim_start().starts_with("Downloaded")
-            || line.trim_start().starts_with("Finished")
         {
+            continue;
+        }
+        if line.trim_start().starts_with("Finished") {
+            finished_line = Some(line.trim().to_string());
             continue;
         }
 
@@ -822,7 +859,12 @@ fn filter_cargo_test(output: &str) -> String {
         if all_parsed {
             if let Some(agg) = aggregated {
                 if agg.suites > 0 {
-                    return agg.format_compact();
+                    let base = agg.format_compact();
+                    return if let Some(f) = finished_line {
+                        format!("{}\n{}", base, f)
+                    } else {
+                        base
+                    };
                 }
             }
         }
@@ -881,19 +923,23 @@ fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
     let mut error_count = 0;
     let mut warning_count = 0;
+    let mut finished_line: Option<String> = None;
 
     // Parse clippy output lines
     // Format: "warning: description\n  --> file:line:col\n  |\n  | code\n"
     let mut current_rule = String::new();
 
     for line in output.lines() {
-        // Skip compilation lines
+        // Skip compilation lines (keep Finished — useful metadata)
         if line.trim_start().starts_with("Compiling")
             || line.trim_start().starts_with("Checking")
             || line.trim_start().starts_with("Downloading")
             || line.trim_start().starts_with("Downloaded")
-            || line.trim_start().starts_with("Finished")
         {
+            continue;
+        }
+        if line.trim_start().starts_with("Finished") {
+            finished_line = Some(line.trim().to_string());
             continue;
         }
 
@@ -941,7 +987,12 @@ fn filter_cargo_clippy(output: &str) -> String {
     }
 
     if error_count == 0 && warning_count == 0 {
-        return "cargo clippy: No issues found".to_string();
+        let base = "cargo clippy: No issues found".to_string();
+        return if let Some(f) = finished_line {
+            format!("{}\n{}", base, f)
+        } else {
+            base
+        };
     }
 
     let mut result = String::new();
@@ -969,11 +1020,16 @@ fn filter_cargo_clippy(output: &str) -> String {
         result.push_str(&format!("\n... +{} more rules\n", by_rule.len() - 15));
     }
 
+    if let Some(f) = finished_line {
+        result.push('\n');
+        result.push_str(&f);
+    }
+
     result.trim().to_string()
 }
 
 /// Runs an unsupported cargo subcommand by passing it through directly
-pub fn run_passthrough(args: &[OsString], verbose: u8) -> Result<()> {
+pub fn run_passthrough(args: &[OsString], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     if verbose > 0 {
@@ -991,9 +1047,9 @@ pub fn run_passthrough(args: &[OsString], verbose: u8) -> Result<()> {
     );
 
     if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
+        return Ok(status.code().unwrap_or(1));
     }
-    Ok(())
+    Ok(0)
 }
 
 #[cfg(test)]
@@ -1115,6 +1171,11 @@ mod tests {
         let result = filter_cargo_build(output);
         assert!(result.contains("cargo build"));
         assert!(result.contains("3 crates compiled"));
+        assert!(
+            result.contains("Finished"),
+            "should preserve Finished line: {}",
+            result
+        );
     }
 
     #[test]
@@ -1155,6 +1216,11 @@ test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
         );
         assert!(!result.contains("Compiling"));
         assert!(!result.contains("test utils"));
+        assert!(
+            result.contains("Finished"),
+            "should preserve Finished line in cargo test: {}",
+            result
+        );
     }
 
     #[test]
@@ -1357,6 +1423,11 @@ error: could not compile `rtk` (test "repro_compile_fail") due to 1 previous err
 "#;
         let result = filter_cargo_clippy(output);
         assert!(result.contains("cargo clippy: No issues found"));
+        assert!(
+            result.contains("Finished"),
+            "should preserve Finished line in cargo clippy: {}",
+            result
+        );
     }
 
     #[test]
@@ -1405,6 +1476,11 @@ warning: `rtk` (bin) generated 2 warnings
         assert!(result.contains("Replaced"), "got: {}", result);
         assert!(!result.contains("Compiling"), "got: {}", result);
         assert!(!result.contains("Downloading"), "got: {}", result);
+        assert!(
+            result.contains("Finished"),
+            "should preserve Finished line in cargo install: {}",
+            result
+        );
     }
 
     #[test]
@@ -1565,7 +1641,8 @@ error: aborting due to 2 previous errors
 "#;
         let result = filter_cargo_nextest(output);
         assert_eq!(
-            result, "cargo nextest: 301 passed (1 binary, 0.192s)",
+            result,
+            "cargo nextest: 301 passed (1 binary, 0.192s)\nFinished `test` profile [unoptimized + debuginfo] target(s) in 0.04s",
             "got: {}",
             result
         );
@@ -1731,8 +1808,8 @@ error: test run failed
             result
         );
         assert!(
-            !result.contains("Finished"),
-            "should strip Finished: {}",
+            result.contains("Finished"),
+            "should preserve Finished line: {}",
             result
         );
         assert!(

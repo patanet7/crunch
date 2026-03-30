@@ -71,7 +71,7 @@ const NPM_SUBCOMMANDS: &[&str] = &[
     "restart",
 ];
 
-pub fn run(args: &[String], verbose: u8, skip_env: bool) -> Result<()> {
+pub fn run(args: &[String], verbose: u8, skip_env: bool) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("npm");
@@ -125,10 +125,10 @@ pub fn run(args: &[String], verbose: u8, skip_env: bool) -> Result<()> {
     );
 
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter npm run output - strip boilerplate, progress bars, npm WARN

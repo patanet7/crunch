@@ -23,7 +23,7 @@ fn run_gt_filtered(
     verbose: u8,
     tee_label: &str,
     filter_fn: fn(&str) -> String,
-) -> Result<()> {
+) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("gt");
@@ -78,17 +78,17 @@ fn run_gt_filtered(
     timer.track(&label, &rtk_label, &raw, &output);
 
     if !cmd_output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
 fn filter_identity(input: &str) -> String {
     input.to_string()
 }
 
-pub fn run_log(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_log(args: &[String], verbose: u8) -> Result<i32> {
     match args.first().map(|s| s.as_str()) {
         Some("short") => run_gt_filtered(
             &["log", "short"],
@@ -108,27 +108,27 @@ pub fn run_log(args: &[String], verbose: u8) -> Result<()> {
     }
 }
 
-pub fn run_submit(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_submit(args: &[String], verbose: u8) -> Result<i32> {
     run_gt_filtered(&["submit"], args, verbose, "gt_submit", filter_gt_submit)
 }
 
-pub fn run_sync(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_sync(args: &[String], verbose: u8) -> Result<i32> {
     run_gt_filtered(&["sync"], args, verbose, "gt_sync", filter_gt_sync)
 }
 
-pub fn run_restack(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_restack(args: &[String], verbose: u8) -> Result<i32> {
     run_gt_filtered(&["restack"], args, verbose, "gt_restack", filter_gt_restack)
 }
 
-pub fn run_create(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_create(args: &[String], verbose: u8) -> Result<i32> {
     run_gt_filtered(&["create"], args, verbose, "gt_create", filter_gt_create)
 }
 
-pub fn run_branch(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_branch(args: &[String], verbose: u8) -> Result<i32> {
     run_gt_filtered(&["branch"], args, verbose, "gt_branch", filter_identity)
 }
 
-pub fn run_other(args: &[OsString], verbose: u8) -> Result<()> {
+pub fn run_other(args: &[OsString], verbose: u8) -> Result<i32> {
     if args.is_empty() {
         anyhow::bail!("gt: no subcommand specified");
     }
@@ -167,7 +167,7 @@ pub fn run_other(args: &[OsString], verbose: u8) -> Result<()> {
     }
 }
 
-fn passthrough_gt(subcommand: &str, args: &[String], verbose: u8) -> Result<()> {
+fn passthrough_gt(subcommand: &str, args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("gt");
@@ -195,10 +195,10 @@ fn passthrough_gt(subcommand: &str, args: &[String], verbose: u8) -> Result<()> 
     );
 
     if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
+        return Ok(status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 const MAX_LOG_ENTRIES: usize = 15;

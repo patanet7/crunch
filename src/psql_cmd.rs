@@ -19,7 +19,7 @@ lazy_static! {
     static ref RECORD_HEADER: Regex = Regex::new(r"^-\[ RECORD (\d+) \]-").unwrap();
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("psql");
@@ -44,7 +44,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     }
 
     if exit_code != 0 {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
     let filtered = filter_psql_output(&stdout);
@@ -62,7 +62,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         &filtered,
     );
 
-    Ok(())
+    Ok(0)
 }
 
 fn filter_psql_output(output: &str) -> String {

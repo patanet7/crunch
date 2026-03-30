@@ -83,7 +83,7 @@ fn detect_linter(args: &[String]) -> (&str, bool) {
     }
 }
 
-pub fn run(args: &[String], verbose: u8) -> Result<()> {
+pub fn run(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let skip = strip_pm_prefix(args);
@@ -179,7 +179,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
                 stderr.lines().take(5).collect::<Vec<_>>().join("\n")
             );
         }
-        return Ok(());
+        return Ok(0);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -220,10 +220,10 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     );
 
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Filter ESLint JSON output - group by rule and file

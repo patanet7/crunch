@@ -36,7 +36,7 @@ struct PackageResult {
     failed_tests: Vec<(String, Vec<String>)>, // (test_name, output_lines)
 }
 
-pub fn run_test(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_test(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("go");
@@ -89,13 +89,13 @@ pub fn run_test(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
-pub fn run_build(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_build(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("go");
@@ -142,13 +142,13 @@ pub fn run_build(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
-pub fn run_vet(args: &[String], verbose: u8) -> Result<()> {
+pub fn run_vet(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = resolved_command("go");
@@ -195,13 +195,13 @@ pub fn run_vet(args: &[String], verbose: u8) -> Result<()> {
 
     // Preserve exit code for CI/CD
     if !output.status.success() {
-        std::process::exit(exit_code);
+        return Ok(exit_code);
     }
 
-    Ok(())
+    Ok(0)
 }
 
-pub fn run_other(args: &[OsString], verbose: u8) -> Result<()> {
+pub fn run_other(args: &[OsString], verbose: u8) -> Result<i32> {
     if args.is_empty() {
         anyhow::bail!("go: no subcommand specified");
     }
@@ -240,10 +240,10 @@ pub fn run_other(args: &[OsString], verbose: u8) -> Result<()> {
 
     // Preserve exit code
     if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
+        return Ok(output.status.code().unwrap_or(1));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Parse go test -json output (NDJSON format)
