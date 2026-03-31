@@ -920,7 +920,11 @@ fn filter_cargo_test(output: &str) -> String {
 
 /// Filter cargo clippy output - group warnings by lint rule
 fn filter_cargo_clippy(output: &str) -> String {
-    let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
+    struct ClippyIssue {
+        location: String,
+        message: String,
+    }
+    let mut by_rule: HashMap<String, Vec<ClippyIssue>> = HashMap::new();
     let mut error_count = 0;
     let mut warning_count = 0;
     let mut finished_line: Option<String> = None;
@@ -928,6 +932,7 @@ fn filter_cargo_clippy(output: &str) -> String {
     // Parse clippy output lines
     // Format: "warning: description\n  --> file:line:col\n  |\n  | code\n"
     let mut current_rule = String::new();
+    let mut current_message = String::new();
 
     for line in output.lines() {
         // Skip compilation lines (keep Finished — useful metadata)
@@ -963,17 +968,23 @@ fn filter_cargo_clippy(output: &str) -> String {
                 warning_count += 1;
             }
 
-            // Extract rule name from brackets
-            current_rule = if let Some(bracket_start) = line.rfind('[') {
+            // Extract rule name and message from brackets
+            let prefix = if is_error { "error: " } else { "warning: " };
+            let after_prefix = line.strip_prefix(prefix).unwrap_or(line);
+            if let Some(bracket_start) = line.rfind('[') {
                 if let Some(bracket_end) = line.rfind(']') {
-                    line[bracket_start + 1..bracket_end].to_string()
+                    current_rule = line[bracket_start + 1..bracket_end].to_string();
+                    // Message is between "warning: " and " [rule]"
+                    let msg_end = after_prefix.rfind(" [").unwrap_or(after_prefix.len());
+                    current_message = after_prefix[..msg_end].to_string();
                 } else {
-                    line.to_string()
+                    current_rule = after_prefix.to_string();
+                    current_message = after_prefix.to_string();
                 }
             } else {
                 // No bracket: use the message itself as the rule
-                let prefix = if is_error { "error: " } else { "warning: " };
-                line.strip_prefix(prefix).unwrap_or(line).to_string()
+                current_rule = after_prefix.to_string();
+                current_message = after_prefix.to_string();
             };
         } else if line.trim_start().starts_with("--> ") {
             let location = line.trim_start().trim_start_matches("--> ").to_string();
@@ -981,7 +992,10 @@ fn filter_cargo_clippy(output: &str) -> String {
                 by_rule
                     .entry(current_rule.clone())
                     .or_default()
-                    .push(location);
+                    .push(ClippyIssue {
+                        location,
+                        message: current_message.clone(),
+                    });
             }
         }
     }
@@ -1006,13 +1020,13 @@ fn filter_cargo_clippy(output: &str) -> String {
     let mut rule_counts: Vec<_> = by_rule.iter().collect();
     rule_counts.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
 
-    for (rule, locations) in rule_counts.iter().take(15) {
-        result.push_str(&format!("  {} ({}x)\n", rule, locations.len()));
-        for loc in locations.iter().take(3) {
-            result.push_str(&format!("    {}\n", loc));
+    for (rule, issues) in rule_counts.iter().take(15) {
+        result.push_str(&format!("  {} ({}x)\n", rule, issues.len()));
+        for issue in issues.iter().take(5) {
+            result.push_str(&format!("    {} — {}\n", issue.location, issue.message));
         }
-        if locations.len() > 3 {
-            result.push_str(&format!("    ... +{} more\n", locations.len() - 3));
+        if issues.len() > 5 {
+            result.push_str(&format!("    ... +{} more\n", issues.len() - 5));
         }
     }
 
@@ -1452,6 +1466,17 @@ warning: `rtk` (bin) generated 2 warnings
         assert!(result.contains("0 errors, 2 warnings"));
         assert!(result.contains("unused_variables"));
         assert!(result.contains("clippy::too_many_arguments"));
+        // Must include warning messages so AI can understand and fix issues
+        assert!(
+            result.contains("unused variable: `x`"),
+            "should include warning message: {}",
+            result
+        );
+        assert!(
+            result.contains("this function has too many arguments"),
+            "should include warning message: {}",
+            result
+        );
     }
 
     #[test]

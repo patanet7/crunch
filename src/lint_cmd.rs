@@ -289,25 +289,34 @@ fn filter_eslint_json(output: &str) -> String {
         result.push('\n');
     }
 
-    // Show top files with most issues
-    result.push_str("Top files:\n");
-    for (file_result, count) in by_file.iter().take(10) {
+    // Show issues grouped by file — include line numbers and messages
+    // so the AI can locate and fix each issue.
+    result.push_str("Issues:\n");
+    for (file_result, _count) in by_file.iter().take(10) {
         let short_path = compact_path(&file_result.file_path);
-        result.push_str(&format!("  {} ({} issues)\n", short_path, count));
+        let mut sorted_msgs: Vec<&EslintMessage> = file_result.messages.iter().collect();
+        sorted_msgs.sort_by_key(|m| m.line);
 
-        // Show top 3 rules in this file
-        let mut file_rules: HashMap<String, usize> = HashMap::new();
-        for msg in &file_result.messages {
-            if let Some(rule) = &msg.rule_id {
-                *file_rules.entry(rule.clone()).or_insert(0) += 1;
-            }
+        for (i, msg) in sorted_msgs.iter().enumerate().take(15) {
+            let rule = msg.rule_id.as_deref().unwrap_or("?");
+            result.push_str(&format!(
+                "  {}:{}: {} {}\n",
+                if i == 0 {
+                    short_path.to_string()
+                } else {
+                    " ".repeat(short_path.len())
+                },
+                msg.line,
+                rule,
+                truncate(&msg.message, 120),
+            ));
         }
-
-        let mut file_rule_counts: Vec<_> = file_rules.iter().collect();
-        file_rule_counts.sort_by(|a, b| b.1.cmp(a.1));
-
-        for (rule, count) in file_rule_counts.iter().take(3) {
-            result.push_str(&format!("    {} ({})\n", rule, count));
+        if sorted_msgs.len() > 15 {
+            result.push_str(&format!(
+                "  {}  ... +{} more\n",
+                " ".repeat(short_path.len()),
+                sorted_msgs.len() - 15
+            ));
         }
     }
 
@@ -537,6 +546,22 @@ mod tests {
         assert!(result.contains("prefer-const"));
         assert!(result.contains("no-unused-vars"));
         assert!(result.contains("src/utils.ts"));
+        // Must include line numbers and messages so AI can fix issues
+        assert!(
+            result.contains(":10:"),
+            "should include line numbers: {}",
+            result
+        );
+        assert!(
+            result.contains("Use const instead of let"),
+            "should include error messages: {}",
+            result
+        );
+        assert!(
+            result.contains("Variable x is unused"),
+            "should include error messages: {}",
+            result
+        );
     }
 
     #[test]

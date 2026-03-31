@@ -30,6 +30,7 @@ struct Issue {
     #[serde(rename = "Pos")]
     pos: Position,
     #[serde(rename = "SourceLines", default)]
+    #[allow(dead_code)]
     source_lines: Vec<String>,
     #[serde(rename = "Severity", default)]
     #[allow(dead_code)]
@@ -159,7 +160,7 @@ pub fn run(args: &[String], verbose: u8) -> Result<i32> {
 }
 
 /// Filter golangci-lint JSON output - group by linter and file
-fn filter_golangci_json(output: &str, version: u32) -> String {
+fn filter_golangci_json(output: &str, _version: u32) -> String {
     let result: Result<GolangciOutput, _> = serde_json::from_str(output);
 
     let golangci_output = match result {
@@ -221,40 +222,36 @@ fn filter_golangci_json(output: &str, version: u32) -> String {
         result.push('\n');
     }
 
-    // Show top files
-    result.push_str("Top files:\n");
-    for (file, count) in file_counts.iter().take(10) {
+    // Show issues grouped by file — include line numbers and messages
+    // so the AI can locate and fix each issue.
+    result.push_str("Issues:\n");
+    for (file, _count) in file_counts.iter().take(10) {
         let short_path = compact_path(file);
-        result.push_str(&format!("  {} ({} issues)\n", short_path, count));
+        let mut file_issues: Vec<&Issue> = issues
+            .iter()
+            .filter(|i| i.pos.filename.as_str() == **file)
+            .collect();
+        file_issues.sort_by_key(|i| i.pos.line);
 
-        // Show top 3 linters in this file
-        let mut file_linters: HashMap<String, Vec<&Issue>> = HashMap::new();
-        for issue in issues.iter().filter(|i| i.pos.filename.as_str() == **file) {
-            file_linters
-                .entry(issue.from_linter.clone())
-                .or_default()
-                .push(issue);
+        for (i, issue) in file_issues.iter().enumerate().take(15) {
+            result.push_str(&format!(
+                "  {}:{}: [{}] {}\n",
+                if i == 0 {
+                    short_path.to_string()
+                } else {
+                    " ".repeat(short_path.len())
+                },
+                issue.pos.line,
+                issue.from_linter,
+                truncate(&issue.text, 120),
+            ));
         }
-
-        let mut file_linter_counts: Vec<_> = file_linters.iter().collect();
-        file_linter_counts.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-
-        for (linter, linter_issues) in file_linter_counts.iter().take(3) {
-            result.push_str(&format!("    {} ({})\n", linter, linter_issues.len()));
-
-            // v2 only: show first source line for this linter-file group
-            if version >= 2 {
-                if let Some(first_issue) = linter_issues.first() {
-                    if let Some(source_line) = first_issue.source_lines.first() {
-                        let trimmed = source_line.trim();
-                        let display = match trimmed.char_indices().nth(80) {
-                            Some((i, _)) => &trimmed[..i],
-                            None => trimmed,
-                        };
-                        result.push_str(&format!("      → {}\n", display));
-                    }
-                }
-            }
+        if file_issues.len() > 15 {
+            result.push_str(&format!(
+                "  {}  ... +{} more\n",
+                " ".repeat(short_path.len()),
+                file_issues.len() - 15
+            ));
         }
     }
 
@@ -323,6 +320,22 @@ mod tests {
         assert!(result.contains("gosimple"));
         assert!(result.contains("main.go"));
         assert!(result.contains("utils.go"));
+        // Must include line numbers and messages so AI can fix issues
+        assert!(
+            result.contains(":42:"),
+            "should include line numbers: {}",
+            result
+        );
+        assert!(
+            result.contains("Error return value not checked"),
+            "should include error messages: {}",
+            result
+        );
+        assert!(
+            result.contains("Should use strings.Contains"),
+            "should include error messages: {}",
+            result
+        );
     }
 
     #[test]
@@ -385,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_v2_shows_source_lines() {
+    fn test_filter_v2_shows_issue_details() {
         let output = r#"{
   "Issues": [
     {
@@ -398,15 +411,17 @@ mod tests {
   ]
 }"#;
         let result = filter_golangci_json(output, 2);
+        // v2 output should include line number and message
+        assert!(result.contains(":42:"), "should show line: {}", result);
         assert!(
-            result.contains("→"),
-            "v2 should show source line with → prefix"
+            result.contains("Error return value not checked"),
+            "should show message: {}",
+            result
         );
-        assert!(result.contains("if err := foo()"));
     }
 
     #[test]
-    fn test_filter_v1_does_not_show_source_lines() {
+    fn test_filter_v1_shows_issue_details() {
         let output = r#"{
   "Issues": [
     {
@@ -419,7 +434,13 @@ mod tests {
   ]
 }"#;
         let result = filter_golangci_json(output, 1);
-        assert!(!result.contains("→"), "v1 should not show source lines");
+        // v1 should also include issue details
+        assert!(result.contains(":42:"), "should show line: {}", result);
+        assert!(
+            result.contains("Error return value not checked"),
+            "should show message: {}",
+            result
+        );
     }
 
     #[test]
