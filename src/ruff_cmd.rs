@@ -227,23 +227,36 @@ pub fn filter_ruff_check_json(output: &str) -> String {
         result.push('\n');
     }
 
-    // Show top files
-    result.push_str("Top files:\n");
-    for (file, count) in file_counts.iter().take(10) {
+    // Show diagnostics grouped by file — include line numbers and messages
+    // so the AI can locate and fix each issue.
+    result.push_str("Issues:\n");
+    for (file, _count) in file_counts.iter().take(10) {
         let short_path = compact_path(file);
-        result.push_str(&format!("  {} ({} issues)\n", short_path, count));
+        let mut file_diags: Vec<&RuffDiagnostic> = diagnostics
+            .iter()
+            .filter(|d| &d.filename == *file)
+            .collect();
+        file_diags.sort_by_key(|d| d.location.row);
 
-        // Show top 3 rules in this file
-        let mut file_rules: HashMap<String, usize> = HashMap::new();
-        for diag in diagnostics.iter().filter(|d| &d.filename == *file) {
-            *file_rules.entry(diag.code.clone()).or_insert(0) += 1;
+        for (i, diag) in file_diags.iter().enumerate().take(15) {
+            result.push_str(&format!(
+                "  {}:{}: {} {}\n",
+                if i == 0 {
+                    short_path.to_string()
+                } else {
+                    " ".repeat(short_path.len())
+                },
+                diag.location.row,
+                diag.code,
+                diag.message,
+            ));
         }
-
-        let mut file_rule_counts: Vec<_> = file_rules.iter().collect();
-        file_rule_counts.sort_by(|a, b| b.1.cmp(a.1));
-
-        for (rule, count) in file_rule_counts.iter().take(3) {
-            result.push_str(&format!("    {} ({})\n", rule, count));
+        if file_diags.len() > 15 {
+            result.push_str(&format!(
+                "  {}  ... +{} more\n",
+                " ".repeat(short_path.len()),
+                file_diags.len() - 15
+            ));
         }
     }
 
@@ -412,6 +425,66 @@ mod tests {
         assert!(result.contains("E501"));
         assert!(result.contains("main.py"));
         assert!(result.contains("utils.py"));
+        // Must include line numbers and messages so AI can fix issues
+        assert!(
+            result.contains(":1:"),
+            "should include line numbers: {}",
+            result
+        );
+        assert!(
+            result.contains("imported but unused"),
+            "should include error messages: {}",
+            result
+        );
+        assert!(
+            result.contains("Line too long"),
+            "should include error messages: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_filter_ruff_check_shows_locations_and_messages() {
+        let output = r#"[
+  {
+    "code": "F821",
+    "message": "Undefined name `missing_func`",
+    "location": {"row": 12, "column": 5},
+    "end_location": {"row": 12, "column": 17},
+    "filename": "apps/explorer/main.py",
+    "fix": null
+  },
+  {
+    "code": "F821",
+    "message": "Undefined name `other_func`",
+    "location": {"row": 25, "column": 10},
+    "end_location": {"row": 25, "column": 20},
+    "filename": "apps/explorer/main.py",
+    "fix": null
+  }
+]"#;
+        let result = filter_ruff_check_json(output);
+        // AI needs these to fix the issues:
+        assert!(
+            result.contains("main.py:12"),
+            "need line number: {}",
+            result
+        );
+        assert!(
+            result.contains(":25:"),
+            "need line number for 2nd issue: {}",
+            result
+        );
+        assert!(
+            result.contains("Undefined name `missing_func`"),
+            "need message: {}",
+            result
+        );
+        assert!(
+            result.contains("Undefined name `other_func`"),
+            "need message: {}",
+            result
+        );
     }
 
     #[test]
