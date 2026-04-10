@@ -28,3 +28,7 @@ crunch proxy <cmd>       # Run raw command without filtering
 crunch --version
 which crunch
 ```
+
+## Tee Logs — Read, Don't Re-run
+
+When output includes `[full output: /tmp/crunch/...]`, read that file for full details. Do not re-run the command.
