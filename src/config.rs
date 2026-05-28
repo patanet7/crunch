@@ -52,12 +52,21 @@ pub struct HooksConfig {
     /// Survives `crunch init -g` re-runs since config.toml is user-owned.
     /// Default: ["read", "cat"] — aggressive read filtering strips function bodies.
     pub exclude_commands: Vec<String>,
+
+    /// Install the PostToolUse output-compressor hook on `crunch init`.
+    /// Off by default: it relies on Claude Code honoring `updatedToolOutput`
+    /// (anthropics/claude-code#32105), which isn't shipped yet — installing it
+    /// before then just adds per-command overhead for no effect. Flip to true
+    /// once that ships to get pipe-safe + thinking-safe output compression on
+    /// every turn.
+    pub enable_posttooluse: bool,
 }
 
 impl Default for HooksConfig {
     fn default() -> Self {
         Self {
             exclude_commands: vec!["read".into(), "cat".into()],
+            enable_posttooluse: false,
         }
     }
 }

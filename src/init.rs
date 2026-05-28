@@ -580,8 +580,14 @@ fn patch_settings_json(
         serde_json::json!({})
     };
 
-    // Check idempotency
-    if hook_already_present(&root, hook_command) {
+    // Check idempotency. Also account for the gated PostToolUse compressor hook:
+    // if it's enabled but not yet installed, we still have work to do even when
+    // the PreToolUse rewrite hook is already present.
+    let post_enabled = crate::config::Config::load()
+        .map(|c| c.hooks.enable_posttooluse)
+        .unwrap_or(false);
+    let post_pending = post_enabled && !posttooluse_present(&root);
+    if hook_already_present(&root, hook_command) && !post_pending {
         if verbose > 0 {
             eprintln!("settings.json: hook already present");
         }
@@ -605,8 +611,8 @@ fn patch_settings_json(
         }
     }
 
-    // Deep-merge hook
-    insert_hook_entry(&mut root, hook_command)
+    // Deep-merge hook(s)
+    insert_hook_entry(&mut root, hook_command, post_enabled)
         .context("Failed to insert hook entry into settings.json")?;
 
     // Backup original
@@ -672,7 +678,11 @@ fn clean_double_blanks(content: &str) -> String {
 
 /// Deep-merge Crunch hook entry into settings.json
 /// Creates hooks.PreToolUse structure if missing, preserves existing hooks
-fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) -> Result<()> {
+fn insert_hook_entry(
+    root: &mut serde_json::Value,
+    hook_command: &str,
+    enable_post: bool,
+) -> Result<()> {
     // Ensure root is an object
     if !root.is_object() {
         *root = serde_json::json!({});
@@ -689,23 +699,74 @@ fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) -> Result
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("'hooks' field must be an object, found unexpected type"))?;
 
-    let pre_tool_use_val = hooks
-        .entry("PreToolUse")
-        .or_insert_with(|| serde_json::json!([]));
-    let pre_tool_use = pre_tool_use_val.as_array_mut().ok_or_else(|| {
-        anyhow::anyhow!("'hooks.PreToolUse' must be an array, found unexpected type")
-    })?;
+    // --- PreToolUse (rewrite hook) — idempotent ---
+    {
+        let pre_tool_use_val = hooks
+            .entry("PreToolUse")
+            .or_insert_with(|| serde_json::json!([]));
+        let pre_tool_use = pre_tool_use_val.as_array_mut().ok_or_else(|| {
+            anyhow::anyhow!("'hooks.PreToolUse' must be an array, found unexpected type")
+        })?;
+        let present = pre_tool_use
+            .iter()
+            .filter_map(|e| e.get("hooks")?.as_array())
+            .flatten()
+            .filter_map(|h| h.get("command")?.as_str())
+            .any(|c| c == hook_command || c.contains("crunch-rewrite.sh"));
+        if !present {
+            pre_tool_use.push(serde_json::json!({
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": hook_command }]
+            }));
+        }
+    }
 
-    // Append Crunch hook entry
-    pre_tool_use.push(serde_json::json!({
-        "matcher": "Bash",
-        "hooks": [{
-            "type": "command",
-            "command": hook_command
-        }]
-    }));
+    // --- PostToolUse (output compressor) — gated off by default ---
+    if enable_post {
+        let post_cmd = posttooluse_hook_command();
+        let post_val = hooks
+            .entry("PostToolUse")
+            .or_insert_with(|| serde_json::json!([]));
+        let post = post_val.as_array_mut().ok_or_else(|| {
+            anyhow::anyhow!("'hooks.PostToolUse' must be an array, found unexpected type")
+        })?;
+        if !post_array_has_crunch(post) {
+            post.push(serde_json::json!({
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": post_cmd }]
+            }));
+        }
+    }
 
     Ok(())
+}
+
+/// Command string for the PostToolUse compressor hook: the running crunch
+/// binary (absolute when resolvable) plus `hook posttooluse`.
+fn posttooluse_hook_command() -> String {
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "crunch".to_string());
+    format!("{bin} hook posttooluse")
+}
+
+/// True if a `crunch hook posttooluse` command is already in a PostToolUse array.
+fn post_array_has_crunch(post: &[serde_json::Value]) -> bool {
+    post.iter()
+        .filter_map(|e| e.get("hooks")?.as_array())
+        .flatten()
+        .filter_map(|h| h.get("command")?.as_str())
+        .any(|c| c.contains("hook posttooluse"))
+}
+
+/// Whether the PostToolUse compressor hook is present in settings.
+fn posttooluse_present(root: &serde_json::Value) -> bool {
+    root.get("hooks")
+        .and_then(|h| h.get("PostToolUse"))
+        .and_then(|p| p.as_array())
+        .map(|a| post_array_has_crunch(a))
+        .unwrap_or(false)
 }
 
 /// Check if Crunch hook is already present in settings.json
@@ -2752,7 +2813,7 @@ More notes
         let mut json_content = serde_json::json!({});
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
 
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         // Should create full structure
         assert!(json_content.get("hooks").is_some());
@@ -2770,6 +2831,32 @@ More notes
     }
 
     #[test]
+    fn test_posttooluse_hook_gated_off_by_default() {
+        let mut root = serde_json::json!({});
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", false).unwrap();
+        // PreToolUse added, PostToolUse NOT added when disabled.
+        assert!(root["hooks"].get("PreToolUse").is_some());
+        assert!(root["hooks"].get("PostToolUse").is_none());
+        assert!(!posttooluse_present(&root));
+    }
+
+    #[test]
+    fn test_posttooluse_hook_added_when_enabled_and_idempotent() {
+        let mut root = serde_json::json!({});
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", true).unwrap();
+        assert!(posttooluse_present(&root));
+        let post = root["hooks"]["PostToolUse"].as_array().unwrap();
+        assert_eq!(post.len(), 1);
+        let cmd = post[0]["hooks"][0]["command"].as_str().unwrap();
+        assert!(cmd.contains("hook posttooluse"));
+
+        // Re-running must not duplicate either hook.
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", true).unwrap();
+        assert_eq!(root["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
+        assert_eq!(root["hooks"]["PostToolUse"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
     fn test_insert_hook_entry_preserves_existing() {
         let mut json_content = serde_json::json!({
             "hooks": {
@@ -2784,7 +2871,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         let pre_tool_use = json_content["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre_tool_use.len(), 2); // Should have both hooks
@@ -2807,7 +2894,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         // Should preserve all other keys
         assert_eq!(json_content["env"]["PATH"], "/custom/path");
@@ -3036,7 +3123,7 @@ More notes
     fn test_insert_hook_entry_handles_malformed_hooks() {
         let malformed = r#"{"hooks": "not_an_object"}"#;
         let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
-        let result = insert_hook_entry(&mut value, "echo test");
+        let result = insert_hook_entry(&mut value, "echo test", false);
         // Should return Err, not panic
         assert!(result.is_err());
     }
@@ -3045,7 +3132,7 @@ More notes
     fn test_insert_hook_entry_handles_malformed_pre_tool_use() {
         let malformed = r#"{"hooks": {"PreToolUse": "not_an_array"}}"#;
         let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
-        let result = insert_hook_entry(&mut value, "echo test");
+        let result = insert_hook_entry(&mut value, "echo test", false);
         // Should return Err, not panic
         assert!(result.is_err());
     }
