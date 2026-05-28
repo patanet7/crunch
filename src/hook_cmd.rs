@@ -4,6 +4,109 @@ use std::io::{self, Read};
 
 use crate::discover::registry::rewrite_command;
 
+// ── Claude Code PostToolUse hook ──────────────────────────────
+
+/// Pull the textual output out of a PostToolUse `tool_response`, which may be a
+/// bare string or an object with `stdout`/`stderr`/`output`/`content`.
+fn extract_tool_output(resp: &Value) -> String {
+    match resp {
+        Value::String(s) => s.clone(),
+        Value::Object(_) => {
+            for key in ["stdout", "output", "content", "result"] {
+                if let Some(s) = resp.get(key).and_then(|v| v.as_str()) {
+                    let mut out = s.to_string();
+                    if let Some(err) = resp.get("stderr").and_then(|v| v.as_str()) {
+                        if !err.is_empty() {
+                            out.push('\n');
+                            out.push_str(err);
+                        }
+                    }
+                    return out;
+                }
+            }
+            // Fallback: stderr alone, else the whole object serialized.
+            if let Some(err) = resp.get("stderr").and_then(|v| v.as_str()) {
+                return err.to_string();
+            }
+            resp.to_string()
+        }
+        _ => String::new(),
+    }
+}
+
+/// Best-effort exit code from a `tool_response` (Bash may report it variously).
+fn extract_exit_code(resp: &Value) -> i32 {
+    for key in ["exitCode", "exit_code", "returnCode", "code"] {
+        if let Some(n) = resp.get(key).and_then(|v| v.as_i64()) {
+            return n as i32;
+        }
+    }
+    0
+}
+
+/// Run the Claude Code PostToolUse hook: compress a command's already-captured
+/// output and replace it via `updatedToolOutput`. Emits nothing (output is kept
+/// verbatim) when crunch can't meaningfully shrink it. Never touches the
+/// assistant message, so it is thinking-safe; it only sees final output, so it
+/// is pipe-safe.
+pub fn run_posttooluse() -> Result<()> {
+    let mut input = String::new();
+    io::stdin()
+        .read_to_string(&mut input)
+        .context("Failed to read PostToolUse hook input")?;
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(());
+    }
+    let v: Value = match serde_json::from_str(input) {
+        Ok(v) => v,
+        Err(_) => return Ok(()), // malformed → pass through unchanged
+    };
+
+    // Only Bash output is compressed here.
+    if v.get("tool_name").and_then(|t| t.as_str()) != Some("Bash") {
+        return Ok(());
+    }
+    let command = v
+        .pointer("/tool_input/command")
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
+    if command.is_empty() {
+        return Ok(());
+    }
+    let resp = match v.get("tool_response") {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+    let raw = extract_tool_output(resp);
+    let exit_code = extract_exit_code(resp);
+
+    let compressed = match crate::compress::compress_output(command, &raw, exit_code) {
+        Some(c) => c,
+        None => return Ok(()), // bypassed / unsupported / not worth it → keep raw
+    };
+
+    // When we dropped content, save the full raw output and point at it so the
+    // model can read the complete log instead of re-running the command.
+    let mut out = compressed.output;
+    if compressed.truncated {
+        let tool = command.split_whitespace().next().unwrap_or("bash");
+        if let Some(hint) = crate::tee::tee_and_hint_scoped(&raw, tool, &[], exit_code) {
+            out.push('\n');
+            out.push_str(&hint);
+        }
+    }
+
+    let output = json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "updatedToolOutput": out
+        }
+    });
+    println!("{output}");
+    Ok(())
+}
+
 // ── Copilot hook (VS Code + Copilot CLI) ──────────────────────
 
 /// Format detected from the preToolUse JSON input.
@@ -329,5 +432,31 @@ mod tests {
             rewrite_command("RUST_LOG=debug cargo test", &[]),
             Some("RUST_LOG=debug crunch cargo test".into())
         );
+    }
+
+    // --- PostToolUse output extraction ---
+
+    #[test]
+    fn test_extract_tool_output_string() {
+        assert_eq!(extract_tool_output(&json!("hello world")), "hello world");
+    }
+
+    #[test]
+    fn test_extract_tool_output_object_stdout_stderr() {
+        let resp = json!({ "stdout": "out line", "stderr": "err line" });
+        assert_eq!(extract_tool_output(&resp), "out line\nerr line");
+    }
+
+    #[test]
+    fn test_extract_tool_output_object_stdout_only() {
+        let resp = json!({ "stdout": "just out", "stderr": "" });
+        assert_eq!(extract_tool_output(&resp), "just out");
+    }
+
+    #[test]
+    fn test_extract_exit_code_variants() {
+        assert_eq!(extract_exit_code(&json!({ "exitCode": 2 })), 2);
+        assert_eq!(extract_exit_code(&json!({ "exit_code": 1 })), 1);
+        assert_eq!(extract_exit_code(&json!({ "stdout": "x" })), 0);
     }
 }

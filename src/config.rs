@@ -87,6 +87,11 @@ pub struct DisplayConfig {
     pub colors: bool,
     pub emoji: bool,
     pub max_width: usize,
+    /// Auto-bypass: outputs smaller than this many bytes are passed through
+    /// unchanged instead of being compressed. Small outputs gain little from
+    /// compression and can be mangled by it — bypassing them means the agent
+    /// never needs a manual `crunch proxy` for small commands.
+    pub auto_bypass_under_bytes: usize,
 }
 
 impl Default for DisplayConfig {
@@ -95,6 +100,7 @@ impl Default for DisplayConfig {
             colors: true,
             emoji: true,
             max_width: 120,
+            auto_bypass_under_bytes: 512,
         }
     }
 }

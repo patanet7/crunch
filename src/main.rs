@@ -3,6 +3,7 @@ mod binlog;
 mod cargo_cmd;
 mod cc_economics;
 mod ccusage;
+mod compress;
 mod config;
 mod container;
 mod curl_cmd;
@@ -735,6 +736,12 @@ enum HookCommands {
     Gemini,
     /// Process Copilot preToolUse hook (VS Code + Copilot CLI, reads JSON from stdin)
     Copilot,
+    /// Process Claude Code PostToolUse hook (reads JSON from stdin): compress a
+    /// command's already-captured output and replace it via `updatedToolOutput`.
+    /// No-op on outputs crunch can't shrink. Pipe-safe and thinking-safe (it
+    /// never touches the assistant message). Requires Claude Code support for
+    /// `updatedToolOutput`; harmlessly ignored on versions without it.
+    Posttooluse,
 }
 
 #[derive(Subcommand)]
@@ -2330,6 +2337,9 @@ fn main() -> Result<()> {
             }
             HookCommands::Copilot => {
                 hook_cmd::run_copilot()?;
+            }
+            HookCommands::Posttooluse => {
+                hook_cmd::run_posttooluse()?;
             }
         },
 
