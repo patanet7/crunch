@@ -509,42 +509,44 @@ Would reformat: tests/test_utils.py
 
     #[test]
     fn test_run_with_output_tees_on_failure() {
-        // tee_raw_scoped writes to /tmp/crunch/{project}/ruff-*.log
-        // Record existing log files before the call
+        // tee_raw_scoped writes the RAW output to /tmp/crunch/{project}/ruff-*.log.
+        //
+        // We assert by UNIQUE-CONTENT match, not by a before/after filename diff:
+        // the log name is `ruff-{scope}-{timestamp}.log` at 1-second granularity
+        // and /tmp/crunch/{project}/ persists across runs, so a same-second
+        // collision (another run or a real ruff invocation) reuses the filename
+        // and a set-diff would flakily see "no new file". A unique marker in the
+        // input lets us find our tee file regardless of filename collisions.
         let project = crate::tee::detect_project_name();
         let log_dir = std::path::PathBuf::from("/tmp/crunch").join(&project);
         let _ = std::fs::create_dir_all(&log_dir);
 
-        let before: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
-            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
-            .unwrap_or_default();
-
-        // Large enough JSON output to trigger tee (>500 chars)
-        let big_output = r#"[
-  {"code":"F401","message":"unused import","location":{"row":1,"column":0},"end_location":{"row":1,"column":0},"filename":"src/main.py","fix":null},
-  {"code":"E501","message":"line too long","location":{"row":2,"column":0},"end_location":{"row":2,"column":0},"filename":"src/utils.py","fix":null}
-]
-"#;
-        // Pad to >500 chars
-        let padded = format!("{}{}", big_output, " ".repeat(600));
+        let marker = format!("ZZ_TEE_MARKER_{}", std::process::id());
+        // Large enough (>500 chars) to trigger tee; carries the unique marker.
+        let big_output = format!(
+            "[\n  {{\"code\":\"F401\",\"message\":\"unused import\",\"location\":{{\"row\":1,\"column\":0}},\"end_location\":{{\"row\":1,\"column\":0}},\"filename\":\"src/{marker}.py\",\"fix\":null}}\n]\n{}",
+            " ".repeat(600)
+        );
         let args: Vec<String> = vec!["check".to_string()];
 
-        // Use exit_code=0 to avoid process::exit killing the test runner.
-        let _ = super::run_with_output(&padded, &args, 0, 0);
+        // exit_code=0 to avoid process::exit killing the test runner.
+        let _ = super::run_with_output(&big_output, &args, 0, 0);
 
-        // A new ruff tee file should have been created
-        let after: std::collections::HashSet<_> = std::fs::read_dir(&log_dir)
-            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name()).collect())
-            .unwrap_or_default();
-
-        let new_files: Vec<_> = after.difference(&before).collect();
-        let ruff_files: Vec<_> = new_files
-            .iter()
-            .filter(|f| f.to_string_lossy().starts_with("ruff-"))
-            .collect();
+        // Some ruff-*.log in the dir must now contain our marker.
+        let found = std::fs::read_dir(&log_dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter(|e| e.file_name().to_string_lossy().starts_with("ruff-"))
+                    .any(|e| {
+                        std::fs::read_to_string(e.path())
+                            .map(|c| c.contains(&marker))
+                            .unwrap_or(false)
+                    })
+            })
+            .unwrap_or(false);
         assert!(
-            !ruff_files.is_empty(),
-            "Expected a ruff tee file in {:?}, but none found — tee_and_hint_scoped is missing from run_with_output",
+            found,
+            "Expected a ruff tee file containing {marker} in {:?} — run_with_output should tee raw output",
             log_dir
         );
     }
