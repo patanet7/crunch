@@ -780,6 +780,30 @@ impl AggregatedTestResult {
 }
 
 /// Filter cargo test output - show failures + summary only
+/// PostToolUse compressor entry: route a `cargo <sub>` command's default
+/// (text) output to the matching filter. Returns `None` for cargo subcommands
+/// we don't compress, so the raw output is shown verbatim.
+pub fn filter_for_hook(command: &str, raw: &str) -> Option<String> {
+    // Find the token after `cargo` (handling absolute paths, env prefixes, and
+    // a leading `+toolchain`).
+    let mut toks = command
+        .split_whitespace()
+        .skip_while(|t| !t.ends_with("cargo"));
+    toks.next()?; // the `cargo` token itself
+    let mut sub = toks.next()?;
+    if sub.starts_with('+') {
+        sub = toks.next()?; // skip `+nightly` etc.
+    }
+    match sub {
+        "test" => Some(filter_cargo_test(raw)),
+        "build" | "check" => Some(filter_cargo_build(raw)),
+        "clippy" => Some(filter_cargo_clippy(raw)),
+        "nextest" => Some(filter_cargo_nextest(raw)),
+        "install" => Some(filter_cargo_install(raw)),
+        _ => None,
+    }
+}
+
 fn filter_cargo_test(output: &str) -> String {
     let mut failures: Vec<String> = Vec::new();
     let mut summary_lines: Vec<String> = Vec::new();

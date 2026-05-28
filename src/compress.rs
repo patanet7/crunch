@@ -49,7 +49,7 @@ pub fn compress_output(command: &str, raw: &str, exit_code: i32) -> Option<Compr
         _ => return None,
     };
 
-    let filtered = filter_for_tool(tool, raw, exit_code)?;
+    let filtered = filter_for_tool(tool, command, raw, exit_code)?;
 
     // Self-sufficient: only treat it as a compression if we saved a meaningful
     // amount. Otherwise keep the raw output (avoids half-compressed noise).
@@ -79,11 +79,12 @@ fn meaningfully_smaller(filtered: &str, raw: &str) -> bool {
 /// here, since in the PostToolUse path the command ran exactly as the model
 /// wrote it. More tools are wired incrementally via thin `pub` filter wrappers
 /// in their `*_cmd` modules.
-fn filter_for_tool(tool: &str, raw: &str, exit_code: i32) -> Option<String> {
+fn filter_for_tool(tool: &str, command: &str, raw: &str, exit_code: i32) -> Option<String> {
     match tool {
         "crunch mypy" => Some(crate::mypy_cmd::filter_mypy_output(raw)),
         "crunch prettier" => Some(crate::prettier_cmd::filter_prettier_output(raw)),
         "crunch pytest" => Some(crate::pytest_cmd::filter_for_hook(raw, exit_code)),
+        "crunch cargo" => crate::cargo_cmd::filter_for_hook(command, raw),
         _ => None,
     }
 }
@@ -149,6 +150,38 @@ mod tests {
         assert!(c.output.len() < raw.len());
         // The failing test must survive into the compressed output (self-sufficient).
         assert!(c.output.contains("test_boom"));
+    }
+
+    #[test]
+    fn test_cargo_test_output_is_compressed_and_routes_by_subcommand() {
+        let mut raw = String::from("   Compiling crunch v0.1.0 (/repo)\n");
+        raw.push_str("    Finished test [unoptimized + debuginfo] target(s) in 3.21s\n");
+        raw.push_str("     Running unittests src/main.rs\n\nrunning 80 tests\n");
+        for i in 0..80 {
+            raw.push_str(&format!("test mod::case_{i} ... ok\n"));
+        }
+        raw.push_str("test mod::explode ... FAILED\n\nfailures:\n\n");
+        raw.push_str("---- mod::explode stdout ----\n");
+        raw.push_str(
+            "thread 'mod::explode' panicked at 'assertion failed: 1 == 2', src/main.rs:42:5\n\n",
+        );
+        raw.push_str("failures:\n    mod::explode\n\n");
+        raw.push_str("test result: FAILED. 80 passed; 1 failed; 0 ignored; 0 measured\n");
+        assert!(raw.len() >= 512);
+
+        let c = compress_output("cargo test --workspace", &raw, 101)
+            .expect("cargo test output should compress");
+        assert!(c.output.len() < raw.len());
+        assert!(c.output.contains("explode")); // failing test survives
+                                               // passing-test noise is dropped
+        assert!(!c.output.contains("case_40"));
+    }
+
+    #[test]
+    fn test_cargo_unknown_subcommand_passes_through() {
+        // `cargo metadata` isn't a compressible subcommand → keep raw.
+        let raw = blob(100);
+        assert!(compress_output("cargo metadata --format-version 1", &raw, 0).is_none());
     }
 
     #[test]
