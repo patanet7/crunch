@@ -79,10 +79,11 @@ fn meaningfully_smaller(filtered: &str, raw: &str) -> bool {
 /// here, since in the PostToolUse path the command ran exactly as the model
 /// wrote it. More tools are wired incrementally via thin `pub` filter wrappers
 /// in their `*_cmd` modules.
-fn filter_for_tool(tool: &str, raw: &str, _exit_code: i32) -> Option<String> {
+fn filter_for_tool(tool: &str, raw: &str, exit_code: i32) -> Option<String> {
     match tool {
         "crunch mypy" => Some(crate::mypy_cmd::filter_mypy_output(raw)),
         "crunch prettier" => Some(crate::prettier_cmd::filter_prettier_output(raw)),
+        "crunch pytest" => Some(crate::pytest_cmd::filter_for_hook(raw, exit_code)),
         _ => None,
     }
 }
@@ -118,6 +119,36 @@ mod tests {
     fn test_ignored_command_passes_through() {
         let raw = blob(100);
         assert!(compress_output("cd /tmp", &raw, 0).is_none());
+    }
+
+    #[test]
+    fn test_pytest_large_output_is_compressed() {
+        // A verbose pytest run with many passes + a failure compresses well.
+        let mut raw = String::from(
+            "============================= test session starts ==============================\n",
+        );
+        for i in 0..200 {
+            raw.push_str(&format!(
+                "tests/test_mod.py::test_case_{i} PASSED                 [ 50%]\n"
+            ));
+        }
+        raw.push_str("tests/test_mod.py::test_boom FAILED                              [100%]\n");
+        raw.push_str(
+            "=================================== FAILURES ===================================\n",
+        );
+        raw.push_str(
+            "___________________________________ test_boom __________________________________\n",
+        );
+        raw.push_str("    assert 1 == 2\nE   assert 1 == 2\n");
+        raw.push_str(
+            "=========================== 1 failed, 200 passed in 1.23s ======================\n",
+        );
+        assert!(raw.len() >= 512);
+        let c = compress_output("pytest tests/", &raw, 1).expect("pytest output should compress");
+        assert!(c.truncated);
+        assert!(c.output.len() < raw.len());
+        // The failing test must survive into the compressed output (self-sufficient).
+        assert!(c.output.contains("test_boom"));
     }
 
     #[test]

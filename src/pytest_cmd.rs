@@ -216,6 +216,12 @@ pub fn run(args: &[String], verbose: u8) -> Result<i32> {
 /// `exit_code` is used as ground truth to disambiguate when the summary line
 /// is missing or unparseable. Pytest exit codes: 0=OK, 1=FAILED, 2=INTERRUPTED,
 /// 3=INTERNAL_ERROR, 4=USAGE_ERROR, 5=NO_TESTS_COLLECTED.
+/// Filter pre-captured pytest output for the PostToolUse compressor.
+/// Thin wrapper over [`filter_pytest_output`] that takes a concrete exit code.
+pub fn filter_for_hook(raw: &str, exit_code: i32) -> String {
+    filter_pytest_output(raw, Some(exit_code))
+}
+
 fn filter_pytest_output(output: &str, exit_code: Option<i32>) -> String {
     // Strip ANSI codes so colored output doesn't break detection
     let clean = strip_ansi(output);
