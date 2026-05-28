@@ -980,8 +980,19 @@ fn get_db_path() -> Result<PathBuf> {
         }
     }
 
-    // Priority 3: Default platform-specific location
-    let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    // Priority 3: Default platform-specific location.
+    //
+    // Under `cfg!(test)` the default is redirected to a throwaway, process-scoped
+    // temp directory so `cargo test` never writes fixture rows into the real
+    // production tracking DB. Explicit overrides (env var / config) above still
+    // win, so tests that need a specific path keep working. `TimedExecution` and
+    // the module-level `track()` helpers route through here too, so this single
+    // redirect covers every code path that opens the DB during tests.
+    let data_dir = if cfg!(test) {
+        std::env::temp_dir().join(format!("crunch-test-{}", std::process::id()))
+    } else {
+        dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
+    };
     Ok(data_dir.join("crunch").join("history.db"))
 }
 
@@ -1209,6 +1220,12 @@ pub fn track(original_cmd: &str, crunch_cmd: &str, input: &str, output: &str) {
 mod tests {
     use super::*;
 
+    // `CRUNCH_DB_PATH` is a process-global env var. Tests that set/clear it must
+    // not interleave with each other (cargo runs tests in parallel threads),
+    // otherwise one test's value leaks into another's `get_db_path()` read.
+    // Serialize them through this lock.
+    static DB_PATH_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     // 1. estimate_tokens — verify ~4 chars/token ratio
     #[test]
     fn test_estimate_tokens() {
@@ -1334,6 +1351,7 @@ mod tests {
     #[test]
     fn test_custom_db_path_env() {
         use std::env;
+        let _guard = DB_PATH_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let custom_path = "/tmp/crunch_test_custom.db";
         env::set_var("CRUNCH_DB_PATH", custom_path);
@@ -1348,12 +1366,34 @@ mod tests {
     #[test]
     fn test_default_db_path() {
         use std::env;
+        let _guard = DB_PATH_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         // Ensure no env var is set
         env::remove_var("CRUNCH_DB_PATH");
 
         let db_path = get_db_path().expect("Failed to get db path");
         assert!(db_path.ends_with("crunch/history.db"));
+    }
+
+    // 8b. Regression: tests must NEVER resolve to the production tracking DB.
+    // `cargo test` previously inserted thousands of fixture rows into
+    // ~/Library/Application Support/crunch/history.db because the default path
+    // pointed at the real user data dir. Under `cfg!(test)` the default must be
+    // redirected to a throwaway temp location instead.
+    #[test]
+    fn test_default_db_path_is_not_production_in_tests() {
+        use std::env;
+        let _guard = DB_PATH_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        env::remove_var("CRUNCH_DB_PATH");
+
+        let db_path = get_db_path().expect("Failed to get db path");
+        if let Some(prod_root) = dirs::data_local_dir() {
+            assert!(
+                !db_path.starts_with(prod_root.join("crunch")),
+                "test DB path {db_path:?} must not point at the production data dir"
+            );
+        }
     }
 
     // 9. project_filter_params uses GLOB pattern with * wildcard // added
