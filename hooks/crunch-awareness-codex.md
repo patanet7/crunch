@@ -19,7 +19,6 @@ crunch pytest -q
 
 ```bash
 crunch discover          # Missed savings analysis
-crunch proxy <cmd>       # Run raw command without filtering
 ```
 
 ## Verification

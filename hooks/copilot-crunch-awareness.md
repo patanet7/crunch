@@ -15,7 +15,6 @@ No shell scripts, no `jq` dependency, works on Windows natively.
 
 ```bash
 crunch discover          # Scan session history for missed crunch opportunities
-crunch proxy <cmd>       # Run raw (no filtering) but still track it
 ```
 
 ## Installation verification

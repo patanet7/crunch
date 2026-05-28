@@ -66,136 +66,10 @@ pub enum PatchResult {
 }
 
 // Legacy full instructions for backward compatibility (--claude-md mode)
-const CRUNCH_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v2 -->
-# Crunch - Token-Optimized Commands
+const CRUNCH_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v3 -->
+Shell command output in this environment is automatically optimized by `crunch`, a transparent compression proxy. You do not need to invoke it yourself.
 
-## Golden Rule
-
-**Always prefix commands with `crunch`**. If Crunch has a dedicated filter, it uses it. If not, it passes through unchanged. This means Crunch is always safe to use.
-
-**Important**: Even in command chains with `&&`, use `crunch`:
-```bash
-# Wrong
-git add . && git commit -m "msg" && git push
-
-# Correct
-crunch git add . && crunch git commit -m "msg" && crunch git push
-```
-
-## Crunch Commands by Workflow
-
-### Build & Compile (80-90% savings)
-```bash
-crunch cargo build         # Cargo build output
-crunch cargo check         # Cargo check output
-crunch cargo clippy        # Clippy warnings grouped by file (80%)
-crunch tsc                 # TypeScript errors grouped by file/code (83%)
-crunch lint                # ESLint/Biome violations grouped (84%)
-crunch prettier --check    # Files needing format only (70%)
-crunch next build          # Next.js build with route metrics (87%)
-```
-
-### Test (90-99% savings)
-```bash
-crunch cargo test          # Cargo test failures only (90%)
-crunch vitest run          # Vitest failures only (99.5%)
-crunch playwright test     # Playwright failures only (94%)
-crunch test <cmd>          # Generic test wrapper - failures only
-```
-
-### Git (59-80% savings)
-```bash
-crunch git status          # Compact status
-crunch git log             # Compact log (works with all git flags)
-crunch git diff            # Compact diff (80%)
-crunch git show            # Compact show (80%)
-crunch git add             # Ultra-compact confirmations (59%)
-crunch git commit          # Ultra-compact confirmations (59%)
-crunch git push            # Ultra-compact confirmations
-crunch git pull            # Ultra-compact confirmations
-crunch git branch          # Compact branch list
-crunch git fetch           # Compact fetch
-crunch git stash           # Compact stash
-crunch git worktree        # Compact worktree
-```
-
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
-
-### GitHub (26-87% savings)
-```bash
-crunch gh pr view <num>    # Compact PR view (87%)
-crunch gh pr checks        # Compact PR checks (79%)
-crunch gh run list         # Compact workflow runs (82%)
-crunch gh issue list       # Compact issue list (80%)
-crunch gh api              # Compact API responses (26%)
-```
-
-### JavaScript/TypeScript Tooling (70-90% savings)
-```bash
-crunch pnpm list           # Compact dependency tree (70%)
-crunch pnpm outdated       # Compact outdated packages (80%)
-crunch pnpm install        # Compact install output (90%)
-crunch npm run <script>    # Compact npm script output
-crunch npx <cmd>           # Compact npx command output
-crunch prisma              # Prisma without ASCII art (88%)
-```
-
-### Files & Search (60-75% savings)
-```bash
-crunch ls <path>           # Tree format, compact (65%)
-crunch read <file>         # Code reading with filtering (60%)
-crunch grep <pattern>      # Search grouped by file (75%)
-crunch find <pattern>      # Find grouped by directory (70%)
-```
-
-### Analysis & Debug (70-90% savings)
-```bash
-crunch err <cmd>           # Filter errors only from any command
-crunch log <file>          # Deduplicated logs with counts
-crunch json <file>         # JSON structure without values
-crunch deps                # Dependency overview
-crunch env                 # Environment variables compact
-crunch summary <cmd>       # Smart summary of command output
-crunch diff                # Ultra-compact diffs
-```
-
-### Infrastructure (85% savings)
-```bash
-crunch docker ps           # Compact container list
-crunch docker images       # Compact image list
-crunch docker logs <c>     # Deduplicated logs
-crunch kubectl get         # Compact resource list
-crunch kubectl logs        # Deduplicated pod logs
-```
-
-### Network (65-70% savings)
-```bash
-crunch curl <url>          # Compact HTTP responses (70%)
-crunch wget <url>          # Compact download output (65%)
-```
-
-### Meta Commands
-```bash
-crunch discover            # Analyze Claude Code sessions for missed Crunch usage
-crunch proxy <cmd>         # Run command without filtering (for debugging)
-crunch init                # Add Crunch instructions to CLAUDE.md
-crunch init --global       # Add Crunch to ~/.claude/CLAUDE.md
-```
-
-## Token Savings Overview
-
-| Category | Commands | Typical Savings |
-|----------|----------|-----------------|
-| Tests | vitest, playwright, cargo test | 90-99% |
-| Build | next, tsc, lint, prettier | 70-87% |
-| Git | status, log, diff, add, commit | 59-80% |
-| GitHub | gh pr, gh run, gh issue | 26-87% |
-| Package Managers | pnpm, npm, npx | 70-90% |
-| Files | ls, read, grep, find | 60-75% |
-| Infrastructure | docker, kubectl | 85% |
-| Network | curl, wget | 65-70% |
-
-Overall average: **60-90% token reduction** on common development operations.
+When a result is truncated, crunch saves the complete unfiltered output to a log file and prints its path inline (e.g. `[full output: /tmp/crunch/...]`). Read that file for full detail instead of re-running the command.
 <!-- /crunch-instructions -->
 "##;
 
@@ -2357,7 +2231,6 @@ kubectl get pods           crunch kubectl pods
 crunch gain              # Token savings dashboard
 crunch gain --history    # Per-command savings history
 crunch discover          # Find missed crunch opportunities
-crunch proxy <cmd>       # Run raw (no filtering) but track usage
 ```
 "#;
 
@@ -2403,29 +2276,28 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_init_mentions_all_top_level_commands() {
-        for cmd in [
-            "crunch cargo",
-            "crunch gh",
-            "crunch vitest",
-            "crunch tsc",
-            "crunch lint",
-            "crunch prettier",
-            "crunch next",
-            "crunch playwright",
-            "crunch prisma",
-            "crunch pnpm",
-            "crunch npm",
-            "crunch curl",
-            "crunch git",
-            "crunch docker",
-            "crunch kubectl",
-        ] {
-            assert!(
-                CRUNCH_INSTRUCTIONS.contains(cmd),
-                "Missing {cmd} in CRUNCH_INSTRUCTIONS"
-            );
-        }
+    fn test_init_footprint_is_minimal() {
+        // Context safety: the globally-injected instructions must stay a tiny
+        // pointer, not a command catalog. Crunch delivers compression
+        // transparently via the hook, so the model needs no command list — and
+        // must NOT be told to use `crunch proxy` (the zero-compression bypass
+        // that dominated real usage, 95% of crunch invocations).
+        let lines = CRUNCH_INSTRUCTIONS.lines().count();
+        assert!(
+            lines <= 12,
+            "CRUNCH_INSTRUCTIONS must stay a small pointer, got {lines} lines"
+        );
+        assert!(
+            !CRUNCH_INSTRUCTIONS.contains("crunch proxy"),
+            "must not recommend `crunch proxy` in always-loaded instructions"
+        );
+        // No command catalog.
+        assert!(
+            !CRUNCH_INSTRUCTIONS.contains("crunch cargo build"),
+            "must not embed a command catalog"
+        );
+        // Still tells the model where the full output lives.
+        assert!(CRUNCH_INSTRUCTIONS.contains("/tmp/crunch"));
     }
 
     #[test]
@@ -2554,11 +2426,16 @@ More content"#;
 
     #[test]
     fn test_claude_md_mode_creates_full_injection() {
-        // Just verify CRUNCH_INSTRUCTIONS constant has the right content
+        // The injected block is now a minimal pointer (context safety), not a
+        // command catalog. Verify the idempotency markers and the log pointer.
         assert!(CRUNCH_INSTRUCTIONS.contains("<!-- crunch-instructions"));
-        assert!(CRUNCH_INSTRUCTIONS.contains("crunch cargo test"));
         assert!(CRUNCH_INSTRUCTIONS.contains("<!-- /crunch-instructions -->"));
-        assert!(CRUNCH_INSTRUCTIONS.len() > 4000);
+        assert!(CRUNCH_INSTRUCTIONS.contains("/tmp/crunch"));
+        assert!(
+            CRUNCH_INSTRUCTIONS.len() < 600,
+            "injected instructions must stay tiny, got {}",
+            CRUNCH_INSTRUCTIONS.len()
+        );
     }
 
     // --- upsert_crunch_block tests ---
@@ -2586,7 +2463,7 @@ More notes
         let (content, action) = upsert_crunch_block(input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Updated);
         assert!(!content.contains("OLD CRUNCH CONTENT"));
-        assert!(content.contains("crunch cargo test")); // from current CRUNCH_INSTRUCTIONS
+        assert!(content.contains("/tmp/crunch")); // from current (v3) CRUNCH_INSTRUCTIONS pointer
         assert!(content.contains("# Team instructions"));
         assert!(content.contains("More notes"));
     }
