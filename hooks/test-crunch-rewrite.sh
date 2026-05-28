@@ -335,6 +335,67 @@ test_rewrite "node (no pattern)" \
 
 echo ""
 
+# ---- SECTION 5b: Thinking-safety guard ----
+# When extended/interleaved thinking is active, rewriting the tool_use input
+# corrupts the signed thinking block on replay (CC >= 2.1.152) -> fatal 400.
+# The hook must pass through unchanged (no rewrite) on thinking-bearing turns.
+echo "--- Thinking-safety guard (new) ---"
+
+# Like test_rewrite, but the payload can carry effort.level and/or transcript_path.
+test_rewrite_ctx() {
+  local description="$1" input_cmd="$2" expected_cmd="$3" effort="$4" transcript="$5"
+  TOTAL=$((TOTAL + 1))
+  local input_json
+  input_json=$(jq -n --arg cmd "$input_cmd" --arg eff "$effort" --arg tp "$transcript" \
+    '{"tool_name":"Bash","tool_input":{"command":$cmd}}
+     + (if $eff != "" then {"effort":{"level":$eff}} else {} end)
+     + (if $tp  != "" then {"transcript_path":$tp} else {} end)')
+  local output actual
+  output=$(echo "$input_json" | bash "$HOOK" 2>/dev/null) || true
+  actual=$(echo "$output" | jq -r '.hookSpecificOutput.updatedInput.command // empty' 2>/dev/null)
+  if [ "$actual" = "$expected_cmd" ]; then
+    printf "  ${GREEN}PASS${RESET} %s ${DIM}→ %s${RESET}\n" "$description" "${actual:-(no rewrite)}"
+    PASS=$((PASS + 1))
+  else
+    printf "  ${RED}FAIL${RESET} %s\n" "$description"
+    printf "       expected: %s\n" "${expected_cmd:-(no rewrite)}"
+    printf "       actual:   %s\n" "${actual:-(no rewrite)}"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+test_rewrite_ctx "high effort → skip (thinking on)" \
+  "git status" "" "high" ""
+test_rewrite_ctx "medium effort → skip (thinking on)" \
+  "cargo test" "" "medium" ""
+test_rewrite_ctx "low effort → rewrite (thinking off)" \
+  "git status" "crunch git status" "low" ""
+test_rewrite_ctx "no effort field → rewrite (no thinking signal)" \
+  "git status" "crunch git status" "" ""
+test_rewrite_ctx "unknown high effort level → skip (fail safe)" \
+  "git status" "" "max" ""
+
+# transcript-based detection (effort absent): latest assistant turn has thinking
+THINK_TX=$(mktemp)
+printf '%s\n' \
+  '{"type":"user","message":{"role":"user","content":"hi"}}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"reasoning","signature":"sig"}]}}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]}}' \
+  > "$THINK_TX"
+test_rewrite_ctx "transcript has thinking block → skip" \
+  "git status" "" "" "$THINK_TX"
+
+NOTHINK_TX=$(mktemp)
+printf '%s\n' \
+  '{"type":"user","message":{"role":"user","content":"hi"}}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}' \
+  > "$NOTHINK_TX"
+test_rewrite_ctx "transcript without thinking → rewrite" \
+  "git status" "crunch git status" "" "$NOTHINK_TX"
+rm -f "$THINK_TX" "$NOTHINK_TX"
+
+echo ""
+
 # ---- SECTION 6: Audit logging ----
 echo "--- Audit logging (CRUNCH_HOOK_AUDIT=1) ---"
 

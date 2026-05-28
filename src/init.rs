@@ -66,136 +66,10 @@ pub enum PatchResult {
 }
 
 // Legacy full instructions for backward compatibility (--claude-md mode)
-const CRUNCH_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v2 -->
-# Crunch - Token-Optimized Commands
+const CRUNCH_INSTRUCTIONS: &str = r##"<!-- crunch-instructions v3 -->
+Shell command output in this environment is automatically optimized by `crunch`, a transparent compression proxy. You do not need to invoke it yourself.
 
-## Golden Rule
-
-**Always prefix commands with `crunch`**. If Crunch has a dedicated filter, it uses it. If not, it passes through unchanged. This means Crunch is always safe to use.
-
-**Important**: Even in command chains with `&&`, use `crunch`:
-```bash
-# Wrong
-git add . && git commit -m "msg" && git push
-
-# Correct
-crunch git add . && crunch git commit -m "msg" && crunch git push
-```
-
-## Crunch Commands by Workflow
-
-### Build & Compile (80-90% savings)
-```bash
-crunch cargo build         # Cargo build output
-crunch cargo check         # Cargo check output
-crunch cargo clippy        # Clippy warnings grouped by file (80%)
-crunch tsc                 # TypeScript errors grouped by file/code (83%)
-crunch lint                # ESLint/Biome violations grouped (84%)
-crunch prettier --check    # Files needing format only (70%)
-crunch next build          # Next.js build with route metrics (87%)
-```
-
-### Test (90-99% savings)
-```bash
-crunch cargo test          # Cargo test failures only (90%)
-crunch vitest run          # Vitest failures only (99.5%)
-crunch playwright test     # Playwright failures only (94%)
-crunch test <cmd>          # Generic test wrapper - failures only
-```
-
-### Git (59-80% savings)
-```bash
-crunch git status          # Compact status
-crunch git log             # Compact log (works with all git flags)
-crunch git diff            # Compact diff (80%)
-crunch git show            # Compact show (80%)
-crunch git add             # Ultra-compact confirmations (59%)
-crunch git commit          # Ultra-compact confirmations (59%)
-crunch git push            # Ultra-compact confirmations
-crunch git pull            # Ultra-compact confirmations
-crunch git branch          # Compact branch list
-crunch git fetch           # Compact fetch
-crunch git stash           # Compact stash
-crunch git worktree        # Compact worktree
-```
-
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
-
-### GitHub (26-87% savings)
-```bash
-crunch gh pr view <num>    # Compact PR view (87%)
-crunch gh pr checks        # Compact PR checks (79%)
-crunch gh run list         # Compact workflow runs (82%)
-crunch gh issue list       # Compact issue list (80%)
-crunch gh api              # Compact API responses (26%)
-```
-
-### JavaScript/TypeScript Tooling (70-90% savings)
-```bash
-crunch pnpm list           # Compact dependency tree (70%)
-crunch pnpm outdated       # Compact outdated packages (80%)
-crunch pnpm install        # Compact install output (90%)
-crunch npm run <script>    # Compact npm script output
-crunch npx <cmd>           # Compact npx command output
-crunch prisma              # Prisma without ASCII art (88%)
-```
-
-### Files & Search (60-75% savings)
-```bash
-crunch ls <path>           # Tree format, compact (65%)
-crunch read <file>         # Code reading with filtering (60%)
-crunch grep <pattern>      # Search grouped by file (75%)
-crunch find <pattern>      # Find grouped by directory (70%)
-```
-
-### Analysis & Debug (70-90% savings)
-```bash
-crunch err <cmd>           # Filter errors only from any command
-crunch log <file>          # Deduplicated logs with counts
-crunch json <file>         # JSON structure without values
-crunch deps                # Dependency overview
-crunch env                 # Environment variables compact
-crunch summary <cmd>       # Smart summary of command output
-crunch diff                # Ultra-compact diffs
-```
-
-### Infrastructure (85% savings)
-```bash
-crunch docker ps           # Compact container list
-crunch docker images       # Compact image list
-crunch docker logs <c>     # Deduplicated logs
-crunch kubectl get         # Compact resource list
-crunch kubectl logs        # Deduplicated pod logs
-```
-
-### Network (65-70% savings)
-```bash
-crunch curl <url>          # Compact HTTP responses (70%)
-crunch wget <url>          # Compact download output (65%)
-```
-
-### Meta Commands
-```bash
-crunch discover            # Analyze Claude Code sessions for missed Crunch usage
-crunch proxy <cmd>         # Run command without filtering (for debugging)
-crunch init                # Add Crunch instructions to CLAUDE.md
-crunch init --global       # Add Crunch to ~/.claude/CLAUDE.md
-```
-
-## Token Savings Overview
-
-| Category | Commands | Typical Savings |
-|----------|----------|-----------------|
-| Tests | vitest, playwright, cargo test | 90-99% |
-| Build | next, tsc, lint, prettier | 70-87% |
-| Git | status, log, diff, add, commit | 59-80% |
-| GitHub | gh pr, gh run, gh issue | 26-87% |
-| Package Managers | pnpm, npm, npx | 70-90% |
-| Files | ls, read, grep, find | 60-75% |
-| Infrastructure | docker, kubectl | 85% |
-| Network | curl, wget | 65-70% |
-
-Overall average: **60-90% token reduction** on common development operations.
+When a result is truncated, crunch saves the complete unfiltered output to a log file and prints its path inline (e.g. `[full output: /tmp/crunch/...]`). Read that file for full detail instead of re-running the command.
 <!-- /crunch-instructions -->
 "##;
 
@@ -706,8 +580,14 @@ fn patch_settings_json(
         serde_json::json!({})
     };
 
-    // Check idempotency
-    if hook_already_present(&root, hook_command) {
+    // Check idempotency. Also account for the gated PostToolUse compressor hook:
+    // if it's enabled but not yet installed, we still have work to do even when
+    // the PreToolUse rewrite hook is already present.
+    let post_enabled = crate::config::Config::load()
+        .map(|c| c.hooks.enable_posttooluse)
+        .unwrap_or(false);
+    let post_pending = post_enabled && !posttooluse_present(&root);
+    if hook_already_present(&root, hook_command) && !post_pending {
         if verbose > 0 {
             eprintln!("settings.json: hook already present");
         }
@@ -731,8 +611,8 @@ fn patch_settings_json(
         }
     }
 
-    // Deep-merge hook
-    insert_hook_entry(&mut root, hook_command)
+    // Deep-merge hook(s)
+    insert_hook_entry(&mut root, hook_command, post_enabled)
         .context("Failed to insert hook entry into settings.json")?;
 
     // Backup original
@@ -798,7 +678,11 @@ fn clean_double_blanks(content: &str) -> String {
 
 /// Deep-merge Crunch hook entry into settings.json
 /// Creates hooks.PreToolUse structure if missing, preserves existing hooks
-fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) -> Result<()> {
+fn insert_hook_entry(
+    root: &mut serde_json::Value,
+    hook_command: &str,
+    enable_post: bool,
+) -> Result<()> {
     // Ensure root is an object
     if !root.is_object() {
         *root = serde_json::json!({});
@@ -815,23 +699,74 @@ fn insert_hook_entry(root: &mut serde_json::Value, hook_command: &str) -> Result
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("'hooks' field must be an object, found unexpected type"))?;
 
-    let pre_tool_use_val = hooks
-        .entry("PreToolUse")
-        .or_insert_with(|| serde_json::json!([]));
-    let pre_tool_use = pre_tool_use_val.as_array_mut().ok_or_else(|| {
-        anyhow::anyhow!("'hooks.PreToolUse' must be an array, found unexpected type")
-    })?;
+    // --- PreToolUse (rewrite hook) — idempotent ---
+    {
+        let pre_tool_use_val = hooks
+            .entry("PreToolUse")
+            .or_insert_with(|| serde_json::json!([]));
+        let pre_tool_use = pre_tool_use_val.as_array_mut().ok_or_else(|| {
+            anyhow::anyhow!("'hooks.PreToolUse' must be an array, found unexpected type")
+        })?;
+        let present = pre_tool_use
+            .iter()
+            .filter_map(|e| e.get("hooks")?.as_array())
+            .flatten()
+            .filter_map(|h| h.get("command")?.as_str())
+            .any(|c| c == hook_command || c.contains("crunch-rewrite.sh"));
+        if !present {
+            pre_tool_use.push(serde_json::json!({
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": hook_command }]
+            }));
+        }
+    }
 
-    // Append Crunch hook entry
-    pre_tool_use.push(serde_json::json!({
-        "matcher": "Bash",
-        "hooks": [{
-            "type": "command",
-            "command": hook_command
-        }]
-    }));
+    // --- PostToolUse (output compressor) — gated off by default ---
+    if enable_post {
+        let post_cmd = posttooluse_hook_command();
+        let post_val = hooks
+            .entry("PostToolUse")
+            .or_insert_with(|| serde_json::json!([]));
+        let post = post_val.as_array_mut().ok_or_else(|| {
+            anyhow::anyhow!("'hooks.PostToolUse' must be an array, found unexpected type")
+        })?;
+        if !post_array_has_crunch(post) {
+            post.push(serde_json::json!({
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": post_cmd }]
+            }));
+        }
+    }
 
     Ok(())
+}
+
+/// Command string for the PostToolUse compressor hook: the running crunch
+/// binary (absolute when resolvable) plus `hook posttooluse`.
+fn posttooluse_hook_command() -> String {
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "crunch".to_string());
+    format!("{bin} hook posttooluse")
+}
+
+/// True if a `crunch hook posttooluse` command is already in a PostToolUse array.
+fn post_array_has_crunch(post: &[serde_json::Value]) -> bool {
+    post.iter()
+        .filter_map(|e| e.get("hooks")?.as_array())
+        .flatten()
+        .filter_map(|h| h.get("command")?.as_str())
+        .any(|c| c.contains("hook posttooluse"))
+}
+
+/// Whether the PostToolUse compressor hook is present in settings.
+fn posttooluse_present(root: &serde_json::Value) -> bool {
+    root.get("hooks")
+        .and_then(|h| h.get("PostToolUse"))
+        .and_then(|p| p.as_array())
+        .map(|a| post_array_has_crunch(a))
+        .unwrap_or(false)
 }
 
 /// Check if Crunch hook is already present in settings.json
@@ -2357,7 +2292,6 @@ kubectl get pods           crunch kubectl pods
 crunch gain              # Token savings dashboard
 crunch gain --history    # Per-command savings history
 crunch discover          # Find missed crunch opportunities
-crunch proxy <cmd>       # Run raw (no filtering) but track usage
 ```
 "#;
 
@@ -2403,29 +2337,28 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_init_mentions_all_top_level_commands() {
-        for cmd in [
-            "crunch cargo",
-            "crunch gh",
-            "crunch vitest",
-            "crunch tsc",
-            "crunch lint",
-            "crunch prettier",
-            "crunch next",
-            "crunch playwright",
-            "crunch prisma",
-            "crunch pnpm",
-            "crunch npm",
-            "crunch curl",
-            "crunch git",
-            "crunch docker",
-            "crunch kubectl",
-        ] {
-            assert!(
-                CRUNCH_INSTRUCTIONS.contains(cmd),
-                "Missing {cmd} in CRUNCH_INSTRUCTIONS"
-            );
-        }
+    fn test_init_footprint_is_minimal() {
+        // Context safety: the globally-injected instructions must stay a tiny
+        // pointer, not a command catalog. Crunch delivers compression
+        // transparently via the hook, so the model needs no command list — and
+        // must NOT be told to use `crunch proxy` (the zero-compression bypass
+        // that dominated real usage, 95% of crunch invocations).
+        let lines = CRUNCH_INSTRUCTIONS.lines().count();
+        assert!(
+            lines <= 12,
+            "CRUNCH_INSTRUCTIONS must stay a small pointer, got {lines} lines"
+        );
+        assert!(
+            !CRUNCH_INSTRUCTIONS.contains("crunch proxy"),
+            "must not recommend `crunch proxy` in always-loaded instructions"
+        );
+        // No command catalog.
+        assert!(
+            !CRUNCH_INSTRUCTIONS.contains("crunch cargo build"),
+            "must not embed a command catalog"
+        );
+        // Still tells the model where the full output lives.
+        assert!(CRUNCH_INSTRUCTIONS.contains("/tmp/crunch"));
     }
 
     #[test]
@@ -2448,6 +2381,29 @@ mod tests {
             jq_pos < rtk_delegate_pos,
             "Guards must appear before crunch rewrite delegation"
         );
+    }
+
+    #[test]
+    fn test_hook_has_thinking_safety_guard() {
+        // The hook must check effort + transcript and skip rewriting on
+        // thinking-bearing turns BEFORE delegating to `crunch rewrite`, else it
+        // re-introduces the "thinking blocks cannot be modified" 400.
+        assert!(
+            REWRITE_HOOK.contains("crunch_thinking_active"),
+            "hook must define the thinking-safety guard"
+        );
+        assert!(REWRITE_HOOK.contains(".effort.level"));
+        assert!(REWRITE_HOOK.contains("redacted_thinking"));
+        let guard_pos = REWRITE_HOOK
+            .find("if crunch_thinking_active")
+            .expect("guard must be invoked");
+        let delegate_pos = REWRITE_HOOK.find("crunch rewrite \"$CMD\"").unwrap();
+        assert!(
+            guard_pos < delegate_pos,
+            "thinking guard must run before the rewrite delegation"
+        );
+        // Hook header version must match the version the checker expects.
+        assert!(REWRITE_HOOK.contains("# crunch-hook-version: 4"));
     }
 
     #[test]
@@ -2531,11 +2487,16 @@ More content"#;
 
     #[test]
     fn test_claude_md_mode_creates_full_injection() {
-        // Just verify CRUNCH_INSTRUCTIONS constant has the right content
+        // The injected block is now a minimal pointer (context safety), not a
+        // command catalog. Verify the idempotency markers and the log pointer.
         assert!(CRUNCH_INSTRUCTIONS.contains("<!-- crunch-instructions"));
-        assert!(CRUNCH_INSTRUCTIONS.contains("crunch cargo test"));
         assert!(CRUNCH_INSTRUCTIONS.contains("<!-- /crunch-instructions -->"));
-        assert!(CRUNCH_INSTRUCTIONS.len() > 4000);
+        assert!(CRUNCH_INSTRUCTIONS.contains("/tmp/crunch"));
+        assert!(
+            CRUNCH_INSTRUCTIONS.len() < 600,
+            "injected instructions must stay tiny, got {}",
+            CRUNCH_INSTRUCTIONS.len()
+        );
     }
 
     // --- upsert_crunch_block tests ---
@@ -2563,7 +2524,7 @@ More notes
         let (content, action) = upsert_crunch_block(input, CRUNCH_INSTRUCTIONS);
         assert_eq!(action, RtkBlockUpsert::Updated);
         assert!(!content.contains("OLD CRUNCH CONTENT"));
-        assert!(content.contains("crunch cargo test")); // from current CRUNCH_INSTRUCTIONS
+        assert!(content.contains("/tmp/crunch")); // from current (v3) CRUNCH_INSTRUCTIONS pointer
         assert!(content.contains("# Team instructions"));
         assert!(content.contains("More notes"));
     }
@@ -2852,7 +2813,7 @@ More notes
         let mut json_content = serde_json::json!({});
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
 
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         // Should create full structure
         assert!(json_content.get("hooks").is_some());
@@ -2870,6 +2831,32 @@ More notes
     }
 
     #[test]
+    fn test_posttooluse_hook_gated_off_by_default() {
+        let mut root = serde_json::json!({});
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", false).unwrap();
+        // PreToolUse added, PostToolUse NOT added when disabled.
+        assert!(root["hooks"].get("PreToolUse").is_some());
+        assert!(root["hooks"].get("PostToolUse").is_none());
+        assert!(!posttooluse_present(&root));
+    }
+
+    #[test]
+    fn test_posttooluse_hook_added_when_enabled_and_idempotent() {
+        let mut root = serde_json::json!({});
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", true).unwrap();
+        assert!(posttooluse_present(&root));
+        let post = root["hooks"]["PostToolUse"].as_array().unwrap();
+        assert_eq!(post.len(), 1);
+        let cmd = post[0]["hooks"][0]["command"].as_str().unwrap();
+        assert!(cmd.contains("hook posttooluse"));
+
+        // Re-running must not duplicate either hook.
+        insert_hook_entry(&mut root, "/h/crunch-rewrite.sh", true).unwrap();
+        assert_eq!(root["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
+        assert_eq!(root["hooks"]["PostToolUse"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
     fn test_insert_hook_entry_preserves_existing() {
         let mut json_content = serde_json::json!({
             "hooks": {
@@ -2884,7 +2871,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         let pre_tool_use = json_content["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre_tool_use.len(), 2); // Should have both hooks
@@ -2907,7 +2894,7 @@ More notes
         });
 
         let hook_command = "/Users/test/.claude/hooks/crunch-rewrite.sh";
-        insert_hook_entry(&mut json_content, hook_command).unwrap();
+        insert_hook_entry(&mut json_content, hook_command, false).unwrap();
 
         // Should preserve all other keys
         assert_eq!(json_content["env"]["PATH"], "/custom/path");
@@ -3136,7 +3123,7 @@ More notes
     fn test_insert_hook_entry_handles_malformed_hooks() {
         let malformed = r#"{"hooks": "not_an_object"}"#;
         let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
-        let result = insert_hook_entry(&mut value, "echo test");
+        let result = insert_hook_entry(&mut value, "echo test", false);
         // Should return Err, not panic
         assert!(result.is_err());
     }
@@ -3145,7 +3132,7 @@ More notes
     fn test_insert_hook_entry_handles_malformed_pre_tool_use() {
         let malformed = r#"{"hooks": {"PreToolUse": "not_an_array"}}"#;
         let mut value: serde_json::Value = serde_json::from_str(malformed).unwrap();
-        let result = insert_hook_entry(&mut value, "echo test");
+        let result = insert_hook_entry(&mut value, "echo test", false);
         // Should return Err, not panic
         assert!(result.is_err());
     }

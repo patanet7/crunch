@@ -6,7 +6,6 @@
 
 ```bash
 crunch discover          # Analyze Claude Code history for missed opportunities
-crunch proxy <cmd>       # Execute raw command without filtering (for debugging)
 ```
 
 ## Installation Verification

@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# crunch-hook-version: 3
+# crunch-hook-version: 4
 # Crunch Claude Code hook — rewrites commands to use crunch for token savings.
 # Requires: crunch, jq
 #
 # This is a thin delegating hook: all rewrite logic lives in `crunch rewrite`,
 # which is the single source of truth (src/discover/registry.rs).
 # To add or change rewrite rules, edit the Rust registry — not this file.
+#
+# THINKING-SAFETY: when extended/interleaved thinking is active, rewriting the
+# tool_use input via updatedInput corrupts the signed thinking block when the
+# turn is replayed (Claude Code >= 2.1.152), producing a fatal
+#   400 ... `thinking` blocks ... cannot be modified
+# that bricks the session. So the hook MUST pass through unchanged (no rewrite)
+# on any turn that may carry a thinking block. See crunch_thinking_active below.
 #
 # Exit code protocol for `crunch rewrite`:
 #   0 + stdout  Rewrite found, no deny/ask rule matched → auto-allow
@@ -33,6 +40,39 @@ INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
 if [ -z "$CMD" ]; then
+  exit 0
+fi
+
+# ── Thinking-safety guard ─────────────────────────────────────────────
+# Skip the rewrite entirely (pass through unchanged) whenever the current turn
+# may carry a signed thinking block. Rewriting tool_use input on such a turn
+# triggers the unrecoverable "thinking blocks cannot be modified" 400.
+EFFORT_LEVEL=$(echo "$INPUT" | jq -r '.effort.level // empty')
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+
+crunch_thinking_active() {
+  # Primary signal (O(1)): medium/high (and any higher) effort enable
+  # (interleaved) thinking on current Opus models, so any tool_use on these turns
+  # is unsafe to rewrite. Treat ANY non-empty level that isn't explicitly "off"
+  # as thinking-on, so future/unknown level names fail safe (skip the rewrite).
+  case "$EFFORT_LEVEL" in
+    "" | none | off | low | minimal) : ;; # thinking off → fall through to transcript check
+    *) return 0 ;;                          # medium/high/unknown → assume thinking on
+  esac
+  # Secondary signal: the transcript's recent history already contains a thinking
+  # block (covers configs where effort is absent). Bounded tail read only — the
+  # transcript can be hundreds of MB, so never scan the whole file.
+  if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    if tail -c 131072 "$TRANSCRIPT_PATH" 2>/dev/null |
+      grep -q '"type":"thinking"\|"type":"redacted_thinking"'; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+if crunch_thinking_active; then
+  # Thinking turn — do not rewrite. The command runs unmodified.
   exit 0
 fi
 

@@ -22,7 +22,6 @@ crunch gh pr list
 
 ```bash
 crunch discover          # Find missed Crunch opportunities
-crunch proxy <cmd>       # Run raw (no filtering, for debugging)
 ```
 
 ## Why
