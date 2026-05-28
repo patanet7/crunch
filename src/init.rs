@@ -2451,6 +2451,29 @@ mod tests {
     }
 
     #[test]
+    fn test_hook_has_thinking_safety_guard() {
+        // The hook must check effort + transcript and skip rewriting on
+        // thinking-bearing turns BEFORE delegating to `crunch rewrite`, else it
+        // re-introduces the "thinking blocks cannot be modified" 400.
+        assert!(
+            REWRITE_HOOK.contains("crunch_thinking_active"),
+            "hook must define the thinking-safety guard"
+        );
+        assert!(REWRITE_HOOK.contains(".effort.level"));
+        assert!(REWRITE_HOOK.contains("redacted_thinking"));
+        let guard_pos = REWRITE_HOOK
+            .find("if crunch_thinking_active")
+            .expect("guard must be invoked");
+        let delegate_pos = REWRITE_HOOK.find("crunch rewrite \"$CMD\"").unwrap();
+        assert!(
+            guard_pos < delegate_pos,
+            "thinking guard must run before the rewrite delegation"
+        );
+        // Hook header version must match the version the checker expects.
+        assert!(REWRITE_HOOK.contains("# crunch-hook-version: 4"));
+    }
+
+    #[test]
     fn test_migration_removes_old_block() {
         let input = r#"# My Config
 
