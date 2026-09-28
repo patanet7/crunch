@@ -1,6 +1,6 @@
 ---
 name: configure-crunch
-description: Use when setting up crunch for a new project, adding .crunch.toml, configuring mise task mappings, customizing tee logging, or adjusting per-project ignore directories
+description: Use when setting up crunch for a new project, adding .crunch.toml, configuring mise task mappings, customizing tee logging, adjusting per-project ignore directories, or setting up env-wrapper auto-routing for virtualenv commands
 ---
 
 # Configure Crunch
@@ -23,14 +23,66 @@ Set up `.crunch.toml` per-project config for the crunch output compression proxy
 
 ## Config Sections Quick Reference
 
-| Section | Purpose | When to include |
-|---------|---------|-----------------|
-| `[mise]` | Map tool names to mise tasks | Only if project uses mise |
-| `[tee]` | Log directory, mode, limits | Only to override defaults |
-| `[tee.overrides]` | Disable tee per-tool | `git`, `ls` commonly disabled |
-| `[filters]` | ignore_dirs, ignore_files | Project-specific noise dirs |
-| `[hooks]` | exclude_commands | Defaults: `["read", "cat"]` |
-| `[display]` | colors, max_width | Rarely needed per-project |
+| Section | Purpose | Where it lives |
+|---------|---------|----------------|
+| `[mise]` | Map tool names to mise tasks | `.crunch.toml` or global |
+| `[tee]` | Log directory, mode, limits | `.crunch.toml` or global |
+| `[tee.overrides]` | Disable tee per-tool | `.crunch.toml` or global |
+| `[filters]` | ignore_dirs, ignore_files | `.crunch.toml` or global |
+| `[hooks]` | exclude_commands | `.crunch.toml` or global |
+| `[display]` | colors, max_width | `.crunch.toml` or global |
+| `[env]` | Env-wrapper auto-routing | **Global only** (`~/.config/crunch/config.toml`) |
+
+**IMPORTANT:** `[env]` is blocked from project `.crunch.toml` for security — a malicious repo could inject shell commands via the wrapper field. Always configure `[env]` in `~/.config/crunch/config.toml`.
+
+## Env-Wrapper Auto-Routing (`[env]`)
+
+Auto-prepends an env manager (uv, poetry, etc.) to bare commands so they run in the correct virtualenv.
+
+**Must be configured in `~/.config/crunch/config.toml`** (not `.crunch.toml`).
+
+```toml
+[env]
+wrapper = "uv run"
+wrap_commands = ["python", "python3", "pip", "pip3"]
+```
+
+- `wrapper` — must be an allowed value: `uv run`, `poetry run`, `pipx run`, `pdm run`, `conda run`, `nix run`, `mise run`
+- `wrap_commands` — must be known tools (Python/Node/Ruby ecosystem). Arbitrary binaries like `ssh`, `git` are rejected for security.
+- Both must be set for the feature to activate.
+
+### How it works
+
+| What AI model runs | What actually executes | Why |
+|--------------------|----------------------|-----|
+| `python3 script.py` | `uv run python3 script.py` | Bare command auto-wrapped |
+| `pytest -x` | `uv run crunch pytest -x` | Wrapped + crunch compression |
+| `uv run pytest -x` | `uv run crunch pytest -x` | Already wrapped, crunch inserted |
+| `git status` | `crunch git status` | Not in wrap_commands, normal rewrite |
+
+### Priority chain
+
+1. Already wrapped (`uv run ...`) — ENV_WRAPPER handles crunch insertion
+2. Has mise mapping — mise handles env, skip wrapping
+3. In wrap_commands — prepend wrapper
+4. Normal crunch rewrite
+
+### ENV_WRAPPER recognition (automatic, no config needed)
+
+Crunch automatically detects `uv run`, `poetry run`, `pipx run`, `pdm run` prefixes and inserts `crunch` between the wrapper and the inner tool. This works without any `[env]` config:
+
+```
+uv run pytest -x          → uv run crunch pytest -x
+poetry run ruff check .   → poetry run crunch ruff check .
+```
+
+### When to use `[env]` vs mise
+
+| Scenario | Use |
+|----------|-----|
+| Tools with mise tasks (`pytest = "test"`) | `[mise]` section in `.crunch.toml` |
+| Bare `python3`/`pip` calls needing venv | `[env]` section in global config |
+| Model already says `uv run pytest` | Nothing — ENV_WRAPPER handles it automatically |
 
 ## Mise Mapping Rules
 
@@ -100,3 +152,7 @@ Only include `[filters]` if you need to override the defaults:
 - **Using `path` instead of `directory`** — the `path` template field doesn't exist
 - **Including defaults** — only add sections that differ from defaults; less config = less drift
 - **Confusing tee overrides with hook excludes** — `[tee.overrides]` controls logging; `[hooks].exclude_commands` controls which commands the hook rewrites
+- **Putting `[env]` in `.crunch.toml`** — blocked for security. Must go in `~/.config/crunch/config.toml`
+- **Using an unsupported wrapper** — only `uv run`, `poetry run`, `pipx run`, `pdm run`, `conda run`, `nix run`, `mise run` are allowed
+- **Wrapping tools that have mise mappings** — if `pytest = "test"` exists in `[mise]`, don't put `pytest` in `wrap_commands` (mise handles the env)
+- **Not needing `[env]` at all** — if the model already says `uv run pytest`, crunch detects the wrapper automatically. `[env]` is only for bare `python3`/`pip` calls
